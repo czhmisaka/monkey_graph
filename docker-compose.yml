@@ -1,0 +1,70 @@
+# ==============================================================================
+# MonkeyGraph Docker Compose 配置
+# 小型生产环境 - 单容器部署
+# 支持通过 PORT 环境变量指定部署端口
+# ==============================================================================
+
+services:
+  monkeygraph:
+    # 使用预构建镜像，不执行 build
+    image: czh_graph-monkeygraph:latest
+    container_name: monkeygraph-app
+    
+    # 使用 root 用户运行（解决宿主机与容器用户 UID 不同导致的权限问题）
+    # SQLite 和 sqlite-vec 需要写入数据库文件
+    user: "0:0"
+    
+    # 端口映射：宿主机 PORT -> 容器13001
+    # PORT 环境变量由 deploy-docker.sh 设置，默认为 13001
+    ports:
+      - "${PORT:-13001}:13001"
+    
+    # 环境变量（从 .env 文件加载）
+    env_file:
+      - ./.env
+    
+    # 环境变量直接配置（优先级更高）
+    environment:
+      - NODE_ENV=production
+      - HOST=0.0.0.0
+      - PORT=13001
+    
+    # 卷挂载：持久化 SQLite 数据库和日志
+    volumes:
+      # 持久化数据库文件（挂载到容器 /app/data）
+      - ./data:/app/data
+      # 持久化日志文件
+      - ./logs:/app/logs
+    # 重启策略：容器崩溃后自动重启
+    restart: unless-stopped
+    
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:13001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    
+    # 资源限制（可选，根据服务器配置调整）
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '2'
+    #       memory: 2G
+    #     reservations:
+    #       cpus: '0.5'
+    #       memory: 512M
+    
+    # 日志配置
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# 网络配置
+networks:
+  default:
+    name: monkeygraph-network
+    driver: bridge
