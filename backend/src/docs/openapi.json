@@ -1,0 +1,1812 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "MonkeyGraph Agent API",
+    "description": "MonkeyGraph 知识图谱系统的 Agent API 接口服务文档",
+    "version": "1.0.0",
+    "contact": {
+      "name": "MonkeyGraph Support",
+      "url": "https://github.com/czhmisaka/czh_graph"
+    },
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:13001",
+      "description": "本地开发服务器"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Agent",
+      "description": "Agent 管理相关接口"
+    },
+    {
+      "name": "Graphs",
+      "description": "图谱操作相关接口"
+    },
+    {
+      "name": "Nodes",
+      "description": "节点操作相关接口"
+    },
+    {
+      "name": "Edges",
+      "description": "边操作相关接口"
+    },
+    {
+      "name": "Algorithms",
+      "description": "图算法相关接口"
+    },
+    {
+      "name": "Versions",
+      "description": "版本管理相关接口"
+    },
+    {
+      "name": "Workspace",
+      "description": "工作区相关接口"
+    },
+    {
+      "name": "Query",
+      "description": "高级查询与检索接口"
+    }
+  ],
+  "paths": {
+    "/api/agent/register": {
+      "post": {
+        "tags": ["Agent"],
+        "summary": "注册新 Agent",
+        "description": "注册一个新的 Agent，获取 API Key",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name"],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Agent 名称"
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "Agent 描述"
+                  },
+                  "workspace_id": {
+                    "type": "string",
+                    "description": "绑定的 Workspace ID"
+                  },
+                  "permissions": {
+                    "type": "object",
+                    "description": "权限配置"
+                  },
+                  "monthly_quota": {
+                    "type": "integer",
+                    "description": "月度请求配额",
+                    "default": 100000
+                  }
+                }
+              },
+              "example": {
+                "name": "my-agent",
+                "description": "My AI Agent",
+                "permissions": {
+                  "graphs": ["read", "write", "delete"],
+                  "nodes": ["read", "write", "delete"],
+                  "edges": ["read", "write", "delete"]
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Agent 注册成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "agent": {
+                    "id": "agent-id",
+                    "name": "my-agent",
+                    "api_key": "your-api-key",
+                    "permissions": {},
+                    "monthly_quota": 100000,
+                    "requests_used": 0
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误"
+          },
+          "500": {
+            "description": "服务器内部错误"
+          }
+        }
+      }
+    },
+    "/api/agent/me": {
+      "get": {
+        "tags": ["Agent"],
+        "summary": "获取当前 Agent 信息",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "agent": {}
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "认证失败"
+          }
+        }
+      },
+      "put": {
+        "tags": ["Agent"],
+        "summary": "更新 Agent 信息",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "is_active": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功"
+          }
+        }
+      }
+    },
+    "/api/agent/quota": {
+      "get": {
+        "tags": ["Agent"],
+        "summary": "获取配额使用情况",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "quota": {
+                    "monthly_quota": 100000,
+                    "requests_used": 8,
+                    "remaining": 99992,
+                    "reset_at": "2026-04-01T00:00:00.000Z"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/rotate-key": {
+      "post": {
+        "tags": ["Agent"],
+        "summary": "轮换 API Key",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "轮换成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "api_key": "new-api-key",
+                  "message": "请妥善保存新的 API Key，它只会显示一次"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/graphs": {
+      "get": {
+        "tags": ["Graphs"],
+        "summary": "获取图谱列表",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "graphs": []
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Graphs"],
+        "summary": "创建图谱",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name"],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              },
+              "example": {
+                "name": "My Knowledge Graph",
+                "description": "Description"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "创建成功"
+          }
+        }
+      }
+    },
+    "/api/agent/graphs/{graphId}/summary": {
+      "get": {
+        "tags": ["Graphs"],
+        "summary": "获取图谱概览（轻量接口）",
+        "description": "获取图谱的轻量概览，包含节点列表和边列表（仅核心字段），适合初步了解图谱结构。",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "graphId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "图谱 ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "graph": {
+                    "id": "graph-id",
+                    "name": "图谱名称",
+                    "description": "描述",
+                    "created_at": "2026-03-24T00:00:00.000Z"
+                  },
+                  "stats": {
+                    "nodeCount": 100,
+                    "edgeCount": 250,
+                    "typeDistribution": {
+                      "person": 30,
+                      "organization": 20,
+                      "concept": 50
+                    }
+                  },
+                  "nodes": [
+                    {"id": "node-1", "label": "节点1", "type": "person"}
+                  ],
+                  "edges": [
+                    {"id": "edge-1", "source": "node-1", "target": "node-2", "label": "关系", "type": "default"}
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "图谱不存在"
+          }
+        }
+      }
+    },
+    "/api/agent/graphs/{graphId}/nodes/search": {
+      "get": {
+        "tags": ["Query"],
+        "summary": "关键词搜索节点 (LIKE)",
+        "description": "基于关键词的模糊搜索，支持 label、type、properties 字段搜索，按相关性评分排序",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "graphId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "图谱 ID"
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "搜索关键词"
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "按节点类型过滤"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            },
+            "description": "页码"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 100
+            },
+            "description": "每页数量（最大100）"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "搜索成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "keyword": "张三",
+                  "total": 25,
+                  "page": 1,
+                  "limit": 20,
+                  "totalPages": 2,
+                  "nodes": [
+                    {
+                      "id": "node-uuid-123",
+                      "label": "张三",
+                      "type": "person",
+                      "properties": { "age": 30 },
+                      "score": 30,
+                      "created_at": "2024-01-01T00:00:00Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "图谱不存在"
+          }
+        }
+      }
+    },
+    "/api/agent/graphs/{graphId}/nodes": {
+      "get": {
+        "tags": ["Nodes"],
+        "summary": "分页获取节点列表",
+        "description": "分页获取图谱的节点列表，支持按类型过滤和字段过滤。",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "graphId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "图谱 ID"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            },
+            "description": "页码"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "maximum": 500
+            },
+            "description": "每页数量（最大500）"
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "按节点类型过滤"
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "返回字段，逗号分隔，如 'id,label,type,properties'"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "nodes": [
+                    {"id": "node-1", "label": "节点1", "type": "person", "properties": {}}
+                  ],
+                  "pagination": {
+                    "page": 1,
+                    "limit": 100,
+                    "total": 500,
+                    "totalPages": 5
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "图谱不存在"
+          }
+        }
+      }
+    },
+    "/api/agent/graphs/{graphId}/edges": {
+      "get": {
+        "tags": ["Edges"],
+        "summary": "分页获取边列表",
+        "description": "分页获取图谱的边列表，支持字段过滤。",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "graphId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "图谱 ID"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            },
+            "description": "页码"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "maximum": 500
+            },
+            "description": "每页数量（最大500）"
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "返回字段，逗号分隔，如 'id,source,target,label'"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "edges": [
+                    {"id": "edge-1", "source": "node-1", "target": "node-2", "label": "关系", "properties": {}}
+                  ],
+                  "pagination": {
+                    "page": 1,
+                    "limit": 100,
+                    "total": 250,
+                    "totalPages": 3
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "图谱不存在"
+          }
+        }
+      }
+    },
+    "/api/agent/graphs/{graphId}": {
+      "get": {
+        "tags": ["Graphs"],
+        "summary": "获取图谱详情（精简版）",
+        "description": "获取图谱基本信息，不包含 nodes 和 edges。获取图谱概览请使用 /summary 接口，获取节点请使用 /nodes 接口。",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "graphId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "图谱 ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "graph": {
+                    "id": "graph-id",
+                    "name": "图谱名称",
+                    "description": "描述",
+                    "created_at": "2026-03-24T00:00:00.000Z"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "图谱不存在"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Graphs"],
+        "summary": "删除图谱",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "graphId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功"
+          }
+        }
+      }
+    },
+    "/api/agent/graphs/{graphId}/batch/nodes": {
+      "post": {
+        "tags": ["Nodes"],
+        "summary": "批量创建节点",
+        "description": "批量创建节点，自动计算 Embedding（可选）",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "graphId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "nodes": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "label": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string",
+                          "default": "default"
+                        },
+                        "properties": {
+                          "type": "object"
+                        },
+                        "x": {
+                          "type": "number"
+                        },
+                        "y": {
+                          "type": "number"
+                        }
+                      }
+                    }
+                  },
+                  "auto_embedding": {
+                    "type": "boolean",
+                    "default": true
+                  }
+                }
+              },
+              "example": {
+                "nodes": [
+                  {"label": "节点1", "type": "person", "properties": {"name": "张三"}},
+                  {"label": "节点2", "type": "organization", "properties": {"name": "公司"}},
+                  {"label": "节点3", "type": "concept"}
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "创建成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "count": 3,
+                  "nodes": [],
+                  "embedding": {
+                    "computed": 3,
+                    "total": 3
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["Nodes"],
+        "summary": "批量更新节点",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "graphId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "nodes": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "properties": {
+                          "type": "object"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "example": {
+                "nodes": [
+                  {"id": "node-id", "label": "新名称", "properties": {"key": "value"}}
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Nodes"],
+        "summary": "批量删除节点",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "graphId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "node_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "example": {
+                "node_ids": ["node-id-1", "node-id-2"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "删除成功"
+          }
+        }
+      }
+    },
+    "/api/agent/graphs/{graphId}/batch/edges": {
+      "post": {
+        "tags": ["Edges"],
+        "summary": "批量创建边",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "graphId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "edges": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string"
+                        },
+                        "target": {
+                          "type": "string"
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "properties": {
+                          "type": "object"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "example": {
+                "edges": [
+                  {"source": "node-id-1", "target": "node-id-2", "label": "关系"},
+                  {"source": "node-id-2", "target": "node-id-3", "label": "属于"}
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "创建成功"
+          }
+        }
+      }
+    },
+    "/api/agent/graphs/{graphId}/degrees": {
+      "get": {
+        "tags": ["Algorithms"],
+        "summary": "获取节点度统计",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "graphId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "degrees": [
+                    {
+                      "id": "node-id",
+                      "label": "节点",
+                      "type": "person",
+                      "in": 2,
+                      "out": 1,
+                      "total": 3
+                    }
+                  ],
+                  "totalEdges": 5
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/graphs/{graphId}/path": {
+      "get": {
+        "tags": ["Algorithms"],
+        "summary": "路径查找 (BFS)",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "graphId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "源节点 ID"
+          },
+          {
+            "name": "target",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "目标节点 ID"
+          },
+          {
+            "name": "max_depth",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 10
+            },
+            "description": "最大深度"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查找成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "path": [],
+                  "length": 4,
+                  "found": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/graphs/{graphId}/nodes/{nodeId}/neighbors": {
+      "get": {
+        "tags": ["Algorithms"],
+        "summary": "邻居查询",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "graphId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "nodeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["all", "incoming", "outgoing"]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "node": {
+                    "id": "node-id",
+                    "label": "节点"
+                  },
+                  "neighbors": [],
+                  "total": 2
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/graphs/{graphId}/snapshot": {
+      "post": {
+        "tags": ["Versions"],
+        "summary": "创建快照",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "graphId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              },
+              "example": {
+                "name": "快照名称",
+                "description": "描述"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "创建成功"
+          }
+        }
+      }
+    },
+    "/api/agent/graphs/{graphId}/versions": {
+      "get": {
+        "tags": ["Versions"],
+        "summary": "获取版本列表",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "graphId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "获取成功"
+          }
+        }
+      }
+    },
+    "/api/agent/graphs/{graphId}/rollback": {
+      "post": {
+        "tags": ["Versions"],
+        "summary": "回滚版本",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "graphId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["version"],
+                "properties": {
+                  "version": {
+                    "type": "integer"
+                  }
+                }
+              },
+              "example": {
+                "version": 1
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "回滚成功"
+          }
+        }
+      }
+    },
+    "/api/agent/workspaces": {
+      "get": {
+        "tags": ["Workspace"],
+        "summary": "获取 Workspace 列表",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "获取成功"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Workspace"],
+        "summary": "创建 Workspace",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name"],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "settings": {
+                    "type": "object"
+                  }
+                }
+              },
+              "example": {
+                "name": "workspace名称",
+                "description": "描述"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "创建成功"
+          }
+        }
+      }
+    },
+    "/api/agent/query/operators": {
+      "get": {
+        "tags": ["Query"],
+        "summary": "获取支持的查询操作符",
+        "description": "返回所有支持的筛选操作符和聚合操作",
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "operators": {
+                    "=": "等于",
+                    "!=": "不等于",
+                    ">": "大于",
+                    "<": "小于",
+                    ">=": "大于等于",
+                    "<=": "小于等于",
+                    "contains": "包含",
+                    "startsWith": "开头匹配",
+                    "endsWith": "结尾匹配",
+                    "exists": "字段存在",
+                    "in": "在列表中"
+                  },
+                  "aggregateOperations": {
+                    "sum": "求和",
+                    "avg": "平均值",
+                    "max": "最大值",
+                    "min": "最小值",
+                    "count": "计数"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/graphs/{graphId}/nodes/query": {
+      "post": {
+        "tags": ["Query"],
+        "summary": "属性筛选 + 排序查询（核心接口）",
+        "description": "支持属性筛选、多字段排序、数值/字符串排序、分页",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "graphId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "图谱 ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "description": "节点类型筛选"
+                  },
+                  "filters": {
+                    "type": "array",
+                    "description": "筛选条件数组",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "field": {
+                          "type": "string",
+                          "description": "字段名，支持 properties.xxx 或直接属性名"
+                        },
+                        "operator": {
+                          "type": "string",
+                          "enum": ["=", "!=", ">", "<", ">=", "<=", "contains", "startsWith", "endsWith", "exists", "in"]
+                        },
+                        "value": {
+                          "type": "any",
+                          "description": "筛选值"
+                        }
+                      }
+                    }
+                  },
+                  "sort": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "order": {
+                            "type": "string",
+                            "enum": ["asc", "desc"]
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": ["number", "string"],
+                            "description": "排序类型，number 使用数值排序"
+                          }
+                        }
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "object"
+                        }
+                      }
+                    ],
+                    "description": "排序条件，支持多字段排序"
+                  },
+                  "pagination": {
+                    "type": "object",
+                    "properties": {
+                      "page": {
+                        "type": "integer",
+                        "default": 1
+                      },
+                      "limit": {
+                        "type": "integer",
+                        "default": 50,
+                        "maximum": 1000
+                      }
+                    }
+                  }
+                }
+              },
+              "example": {
+                "type": "book",
+                "filters": [
+                  {"field": "properties.评分", "operator": ">=", "value": 8}
+                ],
+                "sort": {
+                  "field": "评分",
+                  "order": "desc",
+                  "type": "number"
+                },
+                "pagination": {
+                  "page": 1,
+                  "limit": 10
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "nodes": [],
+                  "pagination": {
+                    "page": 1,
+                    "limit": 10,
+                    "total": 100,
+                    "totalPages": 10,
+                    "hasMore": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/graphs/{graphId}/nodes/rank": {
+      "post": {
+        "tags": ["Query"],
+        "summary": "排名查询",
+        "description": "按属性值对节点进行排名，返回完整排名信息",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "graphId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["field"],
+                "properties": {
+                  "field": {
+                    "type": "string",
+                    "description": "排名字段"
+                  },
+                  "order": {
+                    "type": "string",
+                    "enum": ["asc", "desc"],
+                    "default": "desc",
+                    "description": "排序方向"
+                  },
+                  "filters": {
+                    "type": "array",
+                    "description": "筛选条件"
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "default": 100,
+                    "description": "返回数量"
+                  }
+                }
+              },
+              "example": {
+                "field": "评分",
+                "order": "desc",
+                "limit": 10
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "排名查询成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "nodes": [],
+                  "ranking": {
+                    "field": "评分",
+                    "order": "desc",
+                    "validCount": 14,
+                    "rankings": [
+                      {"nodeId": "xxx", "label": "书籍1", "rank": 1, "value": 9.5},
+                      {"nodeId": "yyy", "label": "书籍2", "rank": 2, "value": 9.0}
+                    ]
+                  },
+                  "pagination": {
+                    "page": 1,
+                    "limit": 10,
+                    "total": 14,
+                    "totalPages": 1,
+                    "hasMore": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/graphs/{graphId}/nodes/top": {
+      "get": {
+        "tags": ["Query"],
+        "summary": "Top-N 查询",
+        "description": "快速获取排名前 N 的节点",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "graphId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "field",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "排序字段"
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["asc", "desc"],
+              "default": "desc"
+            },
+            "description": "排序方向"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 10
+            },
+            "description": "返回数量"
+          },
+          {
+            "name": "filters",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "筛选条件（JSON 字符串）"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Top-N 查询成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "field": "评分",
+                  "order": "desc",
+                  "top": [
+                    {"rank": 1, "id": "xxx", "label": "书籍1", "type": "book", "properties": {}, "评分": 9.5},
+                    {"rank": 2, "id": "yyy", "label": "书籍2", "type": "book", "properties": {}, "评分": 9.0}
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/graphs/{graphId}/nodes/aggregate": {
+      "post": {
+        "tags": ["Query"],
+        "summary": "聚合统计",
+        "description": "对节点属性进行聚合计算（求和、平均值、最大值、最小值、计数）",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "graphId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["field", "operations"],
+                "properties": {
+                  "field": {
+                    "type": "string",
+                    "description": "聚合字段"
+                  },
+                  "operations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": ["sum", "avg", "max", "min", "count"]
+                    }
+                  },
+                  "filters": {
+                    "type": "array",
+                    "description": "筛选条件"
+                  }
+                }
+              },
+              "example": {
+                "field": "评分",
+                "operations": ["sum", "avg", "max", "min", "count"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "聚合统计成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "field": "评分",
+                  "results": {
+                    "sum": 125.5,
+                    "avg": 8.96,
+                    "max": 9.8,
+                    "min": 7.5,
+                    "count": 14
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/graphs/{graphId}/nodes/aggregate/by-type": {
+      "get": {
+        "tags": ["Query"],
+        "summary": "按类型分组聚合",
+        "description": "按节点类型进行分组统计",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "graphId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "field",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "聚合字段"
+          },
+          {
+            "name": "operations",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "聚合操作，逗号分隔"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "分组聚合成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "field": "评分",
+                  "operations": ["count", "avg"],
+                  "groups": [
+                    {"type": "book", "stats": {"count": 10, "sum": null, "avg": 8.5, "max": 9.5, "min": 7.0}},
+                    {"type": "novel", "stats": {"count": 5, "sum": null, "avg": 8.2, "max": 9.0, "min": 7.2}}
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/graphs/{graphId}/nodes/field-stats": {
+      "get": {
+        "tags": ["Query"],
+        "summary": "获取字段统计",
+        "description": "分析图谱中所有属性的类型、统计信息",
+        "security": [
+          {
+            "AgentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "graphId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "totalNodes": 100,
+                  "typeCounts": {
+                    "book": 20,
+                    "author": 15,
+                    "novel": 30
+                  },
+                  "fields": {
+                    "评分": {
+                      "type": "number",
+                      "count": 50,
+                      "numericStats": {
+                        "min": 7.0,
+                        "max": 9.8,
+                        "avg": 8.5,
+                        "count": 50
+                      },
+                      "recommendSort": "numeric"
+                    },
+                    "作者": {
+                      "type": "string",
+                      "count": 50,
+                      "recommendSort": "alphabetical"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "AgentAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "Authorization",
+        "description": "使用 'Agent your-api-key' 格式进行认证"
+      }
+    }
+  }
+}
