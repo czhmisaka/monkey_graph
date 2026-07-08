@@ -267,12 +267,12 @@ const formatContent = (content) => {
   // 先将换行转换为 <br/>，再净化 HTML
   const withBreaks = content.replace(/\n/g, '<br/>')
   
-  // 使用 DOMPurify 净化 HTML，只允许安全的标签和属性
+  // 使用 DOMPurify 净化 HTML,严格白名单(防 javascript: 等 XSS)
   return DOMPurify.sanitize(withBreaks, {
     ALLOWED_TAGS: ['br', 'p', 'strong', 'em', 'b', 'i', 'u', 'code', 'pre', 'ul', 'ol', 'li', 'a', 'span'],
-    ALLOWED_ATTR: ['href', 'class', 'style'],
+    ALLOWED_ATTR: ['href', 'title'],
     ALLOW_DATA_ATTR: false,
-    ADD_ATTR: ['target'],
+    ALLOWED_URI_REGEXP: /^(?:https?|mailto):/i
   })
 }
 

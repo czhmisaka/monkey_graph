@@ -779,26 +779,29 @@ router.get('/agent/graphs/:graphId/overview', dualAuthMiddleware, (req, res) => 
 // ========== 用户认证 ==========
 
 // 用户注册
-router.post('/auth/register', (req, res) => {
+router.post('/auth/register', async (req, res) => {
   try {
     const { username, password } = req.body;
-    
+
     if (!username || !password) {
       return res.status(400).json({ error: '用户名和密码不能为空' });
     }
-    
+    if (password.length < 8) {
+      return res.status(400).json({ error: '密码至少 8 个字符' });
+    }
+
     // 检查用户名是否已存在
     const existingUser = userOperations.findByUsername(username);
     if (existingUser) {
       return res.status(400).json({ error: '用户名已存在' });
     }
-    
+
     // 创建用户
-    const newUser = userOperations.create({ username, password });
-    
+    const newUser = await userOperations.create({ username, password });
+
     // 生成 Token
     const token = generateToken(newUser);
-    
+
     res.status(201).json({
       success: true,
       user: { id: newUser.id, username: newUser.username },
@@ -810,28 +813,28 @@ router.post('/auth/register', (req, res) => {
 });
 
 // 用户登录
-router.post('/auth/login', (req, res) => {
+router.post('/auth/login', async (req, res) => {
   try {
     const { username, password } = req.body;
-    
+
     if (!username || !password) {
       return res.status(400).json({ error: '用户名和密码不能为空' });
     }
-    
+
     // 查找用户
     const user = userOperations.findByUsername(username);
     if (!user) {
       return res.status(401).json({ error: '用户名或密码错误' });
     }
-    
+
     // 验证密码
-    if (!userOperations.verifyPassword(password, user.password)) {
+    if (!await userOperations.verifyPassword(password, user.password)) {
       return res.status(401).json({ error: '用户名或密码错误' });
     }
-    
+
     // 生成 Token
     const token = generateToken(user);
-    
+
     res.json({
       success: true,
       user: { id: user.id, username: user.username, is_admin: user.is_admin },

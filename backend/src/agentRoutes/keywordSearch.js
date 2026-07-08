@@ -20,6 +20,14 @@ router.get('/graphs/:graphId/nodes/search', agentAuthMiddleware, requirePermissi
     const { graphId } = req.params;
     const { keyword, type, page = 1, limit = 20 } = req.query;
 
+    // 输入长度限制(防 DoS)
+    if (keyword && String(keyword).length > 200) {
+      return res.status(400).json(formatError('搜索关键词不能超过 200 字符', 'KEYWORD_TOO_LONG'));
+    }
+    if (type && String(type).length > 100) {
+      return res.status(400).json(formatError('类型过滤不能超过 100 字符', 'TYPE_TOO_LONG'));
+    }
+
     // 检查图谱是否存在
     const graph = graphOperations.getById(graphId);
     if (!graph) {

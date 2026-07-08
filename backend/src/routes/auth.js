@@ -1,34 +1,34 @@
 import express from 'express';
 import { userOperations } from '../database.js';
-import { authMiddleware, generateToken } from '../auth.js';
+import { authMiddleware, generateToken, setAuthCookie, clearAuthCookie } from '../auth.js';
 
 const router = express.Router();
 
 // 用户注册
-router.post('/auth/register', (req, res) => {
+router.post('/auth/register', async (req, res) => {
   try {
     const { username, password } = req.body;
 
     if (!username || !password) {
       return res.status(400).json({ error: '用户名和密码不能为空' });
     }
+    if (password.length < 8) {
+      return res.status(400).json({ error: '密码至少 8 个字符' });
+    }
 
-    // 检查用户名是否已存在
     const existingUser = userOperations.findByUsername(username);
     if (existingUser) {
       return res.status(400).json({ error: '用户名已存在' });
     }
 
-    // 创建用户
-    const newUser = userOperations.create({ username, password });
-
-    // 生成 Token
+    const newUser = await userOperations.create({ username, password });
     const token = generateToken(newUser);
+
+    setAuthCookie(res, token);
 
     res.status(201).json({
       success: true,
-      user: { id: newUser.id, username: newUser.username },
-      token
+      user: { id: newUser.id, username: newUser.username }
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -36,7 +36,7 @@ router.post('/auth/register', (req, res) => {
 });
 
 // 用户登录
-router.post('/auth/login', (req, res) => {
+router.post('/auth/login', async (req, res) => {
   try {
     const { username, password } = req.body;
 
@@ -44,34 +44,37 @@ router.post('/auth/login', (req, res) => {
       return res.status(400).json({ error: '用户名和密码不能为空' });
     }
 
-    // 查找用户
     const user = userOperations.findByUsername(username);
     if (!user) {
       return res.status(401).json({ error: '用户名或密码错误' });
     }
 
-    // 验证密码
-    if (!userOperations.verifyPassword(password, user.password)) {
+    if (!await userOperations.verifyPassword(password, user.password)) {
       return res.status(401).json({ error: '用户名或密码错误' });
     }
 
-    // 生成 Token
     const token = generateToken(user);
+    setAuthCookie(res, token);
 
     res.json({
       success: true,
-      user: { id: user.id, username: user.username, is_admin: user.is_admin },
-      token
+      user: { id: user.id, username: user.username, is_admin: user.is_admin }
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// 获取当前用户信息
+// 用户注销
+router.post('/auth/logout', (req, res) => {
+  clearAuthCookie(res);
+  res.json({ success: true });
+});
+
+// 获取当前用户信息 (基于 httpOnly cookie)
 router.get('/auth/me', authMiddleware, (req, res) => {
   res.json({
-    user: req.user
+    user: { id: req.user.id, username: req.user.username, is_admin: req.user.is_admin }
   });
 });
 
@@ -80,7 +83,6 @@ router.put('/auth/profile', authMiddleware, (req, res) => {
   try {
     const { username, avatar, bio } = req.body;
 
-    // 如果要修改用户名，检查是否已存在
     if (username && username !== req.user.username) {
       const existingUser = userOperations.findByUsername(username);
       if (existingUser) {

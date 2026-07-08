@@ -88,6 +88,31 @@ class SimpleCache {
   }
 
   /**
+   * 原子递增计数器(同步,用于速率限制等场景)
+   * 第一次调用时自动初始化,windowMs 后过期
+   * @param {string} key 缓存键
+   * @param {number} windowMs 过期时间(毫秒)
+   * @returns {{count: number, resetTime: number}}
+   */
+  incr(key, windowMs) {
+    const actualKey = this._makeKey(key)
+    const now = Date.now()
+    const item = this.cache.get(actualKey)
+
+    if (!item || now > item.expiresAt) {
+      // 首次或已过期 → 重置为 1
+      const resetTime = now + windowMs
+      this.cache.set(actualKey, { value: { count: 1, resetTime }, expiresAt: resetTime })
+      return { count: 1, resetTime }
+    }
+
+    // 同步原子递增(单进程内 JS 不会被打断)
+    const next = item.value.count + 1
+    item.value.count = next
+    return { count: next, resetTime: item.value.resetTime }
+  }
+
+  /**
    * 删除过期的缓存条目
    */
   cleanup() {

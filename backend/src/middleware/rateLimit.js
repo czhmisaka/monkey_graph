@@ -38,6 +38,7 @@ function getClientIP(req) {
  * @param {number} options.windowMs - 时间窗口（毫秒）
  * @param {number} options.max - 最大请求数
  * @param {string} options.keyPrefix - 缓存键前缀
+ * @param {Function} options.keyFn - 自定义 key 函数 (req) => string;缺省用 IP
  * @param {boolean} options.skipSuccessfulRequests - 是否跳过成功请求
  */
 export function createRateLimiter(options = {}) {
@@ -45,75 +46,51 @@ export function createRateLimiter(options = {}) {
     windowMs: options.windowMs || DEFAULT_LIMITS.windowMs,
     max: options.max || DEFAULT_LIMITS.max,
     keyPrefix: options.keyPrefix || 'rl',
+    keyFn: options.keyFn || getClientIP,
     skipSuccessfulRequests: options.skipSuccessfulRequests || false
   };
 
-  return async (req, res, next) => {
-    const ip = getClientIP(req);
-    
-    // 检查黑名单
-    if (blacklistedIPs.has(ip)) {
-      return res.status(429).json({
-        error: '请求被拒绝',
-        message: '您的 IP 已被限制，请稍后再试'
-      });
-    }
-
-    const key = `rate:${config.keyPrefix}:${ip}`;
-    
+  return (req, res, next) => {
+    let key;
     try {
-      // 使用原子操作获取并更新计数，避免竞态条件
-      const now = Date.now();
-      let record = globalCache.get(key);
-      
-      // 检查是否需要重置或初始化
-      if (!record || now > record.resetTime) {
-        record = {
-          count: 0,
-          resetTime: now + config.windowMs
-        };
-      }
-
-      // 原子递增
-      record.count++;
-      globalCache.set(key, record, config.windowMs);
-
-      // 设置响应头
-      res.set({
-        'X-RateLimit-Limit': config.max,
-        'X-RateLimit-Remaining': Math.max(0, config.max - record.count),
-        'X-RateLimit-Reset': Math.ceil(record.resetTime / 1000)
-      });
-
-      // 检查是否超限
-      if (record.count > config.max) {
-        console.warn(`[RateLimit] IP ${ip} 请求超限 (${record.count}/${config.max})`);
-        
-        // 如果超限严重（超过 3 倍），加入黑名单
-        if (record.count > config.max * 3) {
-          blacklistedIPs.add(ip);
-          console.error(`[RateLimit] IP ${ip} 已加入黑名单`);
-          
-          // 30 分钟后移除黑名单
-          setTimeout(() => {
-            blacklistedIPs.delete(ip);
-            console.log(`[RateLimit] IP ${ip} 已从黑名单移除`);
-          }, 30 * 60 * 1000);
-        }
-
-        return res.status(429).json({
-          error: '请求过于频繁',
-          message: `请在 ${Math.ceil((record.resetTime - Date.now()) / 1000)} 秒后重试`,
-          retryAfter: Math.ceil((record.resetTime - Date.now()) / 1000)
-        });
-      }
-
-      next();
-    } catch (error) {
-      console.error('[RateLimit] 中间件错误:', error);
-      // 发生错误时放行，避免影响正常请求
-      next();
+      key = `rate:${config.keyPrefix}:${config.keyFn(req)}`;
+    } catch (e) {
+      // keyFn 抛错(如未登录用户调用 user-id 维度) — fallback 到 IP
+      key = `rate:${config.keyPrefix}:ip:${getClientIP(req)}`;
     }
+
+    // 同步原子递增(单进程 JS 不会被打断,无竞态)
+    const { count, resetTime } = globalCache.incr(key, config.windowMs);
+
+    // 设置响应头
+    res.set({
+      'X-RateLimit-Limit': config.max,
+      'X-RateLimit-Remaining': Math.max(0, config.max - count),
+      'X-RateLimit-Reset': Math.ceil(resetTime / 1000)
+    });
+
+    if (count > config.max) {
+      console.warn(`[RateLimit] ${key} 请求超限 (${count}/${config.max})`);
+
+      // IP 维度才加入黑名单;user 维度不加入
+      if (count > config.max * 3 && config.keyFn === getClientIP) {
+        const ip = getClientIP(req);
+        blacklistedIPs.add(ip);
+        console.error(`[RateLimit] IP ${ip} 已加入黑名单`);
+        setTimeout(() => {
+          blacklistedIPs.delete(ip);
+          console.log(`[RateLimit] IP ${ip} 已从黑名单移除`);
+        }, 30 * 60 * 1000);
+      }
+
+      return res.status(429).json({
+        error: '请求过于频繁',
+        message: `请在 ${Math.ceil((resetTime - Date.now()) / 1000)} 秒后重试`,
+        retryAfter: Math.ceil((resetTime - Date.now()) / 1000)
+      });
+    }
+
+    next();
   };
 }
 
@@ -148,6 +125,16 @@ export const apiRateLimiter = createRateLimiter({
 });
 
 /**
+ * 上传速率限制（按用户 20/min）
+ */
+export const uploadRateLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  max: 20,
+  keyPrefix: 'upload',
+  keyFn: (req) => req.user?.id || getClientIP(req)
+});
+
+/**
  * 获取黑名单状态（管理接口）
  */
 export function getBlacklistStatus() {
@@ -170,6 +157,7 @@ export default {
   loginRateLimiter,
   registerRateLimiter,
   apiRateLimiter,
+  uploadRateLimiter,
   getBlacklistStatus,
   removeFromBlacklist
 };

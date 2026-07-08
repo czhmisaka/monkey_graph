@@ -10,7 +10,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { provide } from 'vue'
 import AuthModal from './components/AuthModal.vue'
 import Toast from './components/Toast.vue'
-import { authAPI, getToken, clearToken } from './api'
+import { authAPI, setCurrentUser, getCurrentUser } from './api'
 import { setToastInstance } from './composables/useToast'
 
 const route = useRoute()
@@ -29,18 +29,20 @@ const isGraphPage = computed(() => {
   return route.path.startsWith('/graph')
 })
 
-// 初始化认证状态
+// 初始化认证状态 — 直接调 /auth/me (cookie 自动随请求发送)
 const initAuth = async () => {
-  const token = getToken()
-  if (token) {
-    try {
-      const response = await authAPI.getCurrentUser()
+  try {
+    const response = await authAPI.getCurrentUser()
+    if (response?.user) {
       currentUser.value = response.user
-    } catch (error) {
-      // Token 无效，清除
-      clearToken()
+      setCurrentUser(response.user)
+    } else {
       currentUser.value = null
+      setCurrentUser(null)
     }
+  } catch {
+    currentUser.value = null
+    setCurrentUser(null)
   }
 }
 
@@ -75,9 +77,13 @@ const setToastRef = (el) => {
 provide('auth', {
   currentUser,
   openAuthModal,
-  logout: () => {
-    clearToken()
-    currentUser.value = null
+  logout: async () => {
+    try {
+      await authAPI.logout()
+    } finally {
+      currentUser.value = null
+      setCurrentUser(null)
+    }
   }
 })
 

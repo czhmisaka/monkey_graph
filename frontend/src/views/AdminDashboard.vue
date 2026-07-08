@@ -164,10 +164,8 @@ const saveAgent = async () => {
       // 更新 Agent
       const res = await fetch(`/api/agent/admin/agents/${editingAgent.value.id}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('monkeygraph_token')}`
-        },
+        credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(agentForm.value)
       })
       if (!res.ok) throw new Error('更新失败')
@@ -180,10 +178,8 @@ const saveAgent = async () => {
       // 创建新 Agent
       const res = await fetch('/api/agent/register', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('monkeygraph_token')}`
-        },
+        credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(agentForm.value)
       })
       if (!res.ok) throw new Error('创建失败')
@@ -205,10 +201,8 @@ const toggleAgentStatus = async (agent) => {
   try {
     const res = await fetch(`/api/agent/admin/agents/${agent.id}`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('monkeygraph_token')}`
-      },
+      credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ is_active: newStatus })
     })
     if (!res.ok) throw new Error(`${action}失败`)
@@ -223,11 +217,7 @@ const viewAgentUsers = async (agent) => {
   try {
     // 通过用户关联接口获取（这里简化处理，实际应该查数据库）
     // 由于没有直接的 API，我们通过用户列表来查找
-    const allUsers = await fetch('/api/auth/me', {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('monkeygraph_token')}`
-      }
-    })
+    await fetch('/api/auth/me', { credentials: 'include' })
     // 这里只是演示，实际需要后端提供查询接口
     agentUsers.value = []
     showAgentUsersModal.value = true
@@ -270,19 +260,11 @@ const graphStats = ref({
 const loadGraphStats = async () => {
   try {
     // 获取所有图谱
-    const graphsRes = await fetch('/api/graphs', {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('monkeygraph_token')}`
-      }
-    })
+    const graphsRes = await fetch('/api/graphs', { credentials: 'include' })
     const graphs = await graphsRes.json()
-    
+
     // 获取所有 Agent
-    const agentsRes = await fetch('/api/agents', {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('monkeygraph_token')}`
-      }
-    })
+    const agentsRes = await fetch('/api/agents', { credentials: 'include' })
     const agents = await agentsRes.json()
     
     graphStats.value = {

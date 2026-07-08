@@ -275,7 +275,7 @@ import { useExport } from '../composables/useExport'
 import { useGraphManager } from '../composables/useGraphManager'
 import { useChatSession } from '../composables/useChatSession'
 import { useGraphOperations } from '../composables/useGraphOperations'
-import { graphsAPI, graphAPI, configAPI, authAPI, userLLMConfigAPI, shareAPI, mcpAPI } from '../api'
+import api, { graphsAPI, graphAPI, configAPI, authAPI, userLLMConfigAPI, shareAPI, mcpAPI } from '../api'
 
 // Emit
 const emit = defineEmits(['settings-update'])
@@ -646,30 +646,21 @@ const saveConfig = async () => {
 const loadAllGraphsAuth = async () => {
   try {
     const graphsData = await graphsAPI.getAll()
-    const agentsRes = await fetch('/api/agents', {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('monkeygraph_token')}` }
-    })
-    availableAgents.value = await agentsRes.json()
 
-    const authPromises = graphsData.map(async (graph) => {
-      try {
-        const authRes = await fetch(`/api/graphs/${graph.id}/agents`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('monkeygraph_token')}` }
-        })
-        const authData = await authRes.json()
-        return {
-          graph,
-          authorizations: authData || []
-        }
-      } catch (e) {
-        return {
-          graph,
-          authorizations: []
-        }
-      }
-    })
+    // 1. 拉取可用 Agent 列表(仍单次)
+    const agentsRes = await fetch('/api/agents', { credentials: 'include' })
+    if (agentsRes.ok) availableAgents.value = await agentsRes.json()
 
-    graphAuthList.value = await Promise.all(authPromises)
+    // 2. 批量获取所有图谱的授权(单次请求,替代 N+1)
+    const graphIds = graphsData.map(g => g.id)
+    const authMap = graphIds.length > 0
+      ? await api.post('/graphs/agents/batch', { graphIds })
+      : {}
+
+    graphAuthList.value = graphsData.map(graph => ({
+      graph,
+      authorizations: authMap[graph.id] || []
+    }))
   } catch (e) {
     console.error('加载图谱授权信息失败:', e)
   }
@@ -692,10 +683,8 @@ const authorizeAgent = async (graphId, agentId, permission = 'read') => {
   try {
     const res = await fetch(`/api/graphs/${graphId}/agents`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('monkeygraph_token')}`,
-        'Content-Type': 'application/json'
-      },
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ agent_id: agentId, permission })
     })
     const data = await res.json()
@@ -715,7 +704,7 @@ const revokeAgentAuth = async (graphId, agentId) => {
   try {
     const res = await fetch(`/api/graphs/${graphId}/agents/${agentId}`, {
       method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('monkeygraph_token')}` }
+      credentials: 'include'
     })
     const data = await res.json()
     if (!res.ok) {
@@ -733,10 +722,8 @@ const updateAgentPermission = async (graphId, agentId, permission) => {
   try {
     const res = await fetch(`/api/graphs/${graphId}/agents/${agentId}`, {
       method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('monkeygraph_token')}`,
-        'Content-Type': 'application/json'
-      },
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ permission })
     })
     const data = await res.json()

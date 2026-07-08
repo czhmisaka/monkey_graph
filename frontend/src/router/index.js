@@ -84,33 +84,36 @@ const router = createRouter({
   routes
 })
 
-// 路由守卫 - 管理后台权限控制
-router.beforeEach((to, from, next) => {
-  // 检查是否访问管理后台
-  if (to.path.startsWith('/admin')) {
-    // 从 localStorage 获取用户信息
-    const userStr = localStorage.getItem('user')
-    if (userStr) {
-      try {
-        const user = JSON.parse(userStr)
-        // 检查用户角色是否为管理员
-        if (user.role === 'admin' || user.is_admin === true) {
-          next()
-        } else {
-          // 非管理员重定向到控制面板
-          next('/dashboard')
-        }
-      } catch (e) {
-        // 用户信息解析失败，重定向到首页
-        next('/')
-      }
-    } else {
-      // 未登录，重定向到首页
-      next('/')
+// 路由守卫 - 基于后端 /auth/me 验证(不可由前端篡改)
+import { authAPI, getCurrentUser } from '../api/index.js'
+
+router.beforeEach(async (to, from, next) => {
+  // 管理后台与租户面板需登录 + 角色校验(后端权威)
+  const needAuth = to.path.startsWith('/admin') || to.path.startsWith('/dashboard') || to.path.startsWith('/agents')
+
+  if (!needAuth) return next()
+
+  // 优先用内存中的 user
+  let user = getCurrentUser()
+  if (!user) {
+    try {
+      const res = await authAPI.getCurrentUser()
+      user = res?.user || null
+    } catch (e) {
+      user = null
     }
-  } else {
-    next()
   }
+
+  if (!user) {
+    return next('/')
+  }
+
+  // /admin 路由需要管理员
+  if (to.path.startsWith('/admin') && !user.is_admin) {
+    return next('/dashboard')
+  }
+
+  next()
 })
 
 export default router

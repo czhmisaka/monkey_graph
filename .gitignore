@@ -58,6 +58,14 @@ temp/
 *.tmp
 
 # ====================
+# 备份与历史文件
+# ====================
+*.bak
+*.bak-*
+task_backup.md
+task.md.bak
+
+# ====================
 # Playwright 测试
 # ====================
 .playwright-cli/
@@ -68,4 +76,5 @@ temp/
 # ====================
 *.zip
 *.tar
+release-package/
 release-package/

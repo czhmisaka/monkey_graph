@@ -39,18 +39,24 @@ echo "║   🌐 Host: $HOST                                          ║"
 echo "║   📦 Mode: $MODE                                          ║"
 echo "║                                                           ║"
 
-# 检查端口是否被占用，如果占用则杀掉
-if lsof -ti:13001 > /dev/null 2>&1; then
-    echo "║   ⚠ 后端端口 13001 已被占用，正在关闭...                  ║"
-    lsof -ti:13001 | xargs kill -9 2>/dev/null || true
-    sleep 1
-fi
+# 检查端口是否被占用，如果占用则优雅关闭
+graceful_kill_port() {
+  local port=$1
+  local label=$2
+  if lsof -ti:$port > /dev/null 2>&1; then
+    echo "║   ⚠ $label 端口 $port 已被占用,正在优雅关闭...                  ║"
+    # 先 SIGTERM,等 5s,再 SIGKILL
+    lsof -ti:$port | xargs -r kill -TERM 2>/dev/null || true
+    for _ in 1 2 3 4 5; do
+      if ! lsof -ti:$port > /dev/null 2>&1; then return 0; fi
+      sleep 1
+    done
+    lsof -ti:$port | xargs -r kill -KILL 2>/dev/null || true
+  fi
+}
 
-if lsof -ti:13002 > /dev/null 2>&1; then
-    echo "║   ⚠ 前端开发端口 13002 已被占用，正在关闭...               ║"
-    lsof -ti:13002 | xargs kill -9 2>/dev/null || true
-    sleep 1
-fi
+graceful_kill_port 13001 "后端"
+graceful_kill_port 13002 "前端开发"
 
 # 获取脚本所在目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -144,10 +150,15 @@ fi
 cleanup() {
     echo ""
     echo "正在停止服务..."
-    kill $BACKEND_PID 2>/dev/null
-    kill $FRONTEND_PID 2>/dev/null
-    lsof -ti:13001 | xargs kill -9 2>/dev/null
-    lsof -ti:13002 | xargs kill -9 2>/dev/null
+    # 先给进程 5s 优雅退出
+    [ -n "$BACKEND_PID" ] && kill -TERM $BACKEND_PID 2>/dev/null
+    [ -n "$FRONTEND_PID" ] && kill -TERM $FRONTEND_PID 2>/dev/null
+    sleep 5
+    # 兜底 SIGKILL
+    [ -n "$BACKEND_PID" ] && kill -KILL $BACKEND_PID 2>/dev/null
+    [ -n "$FRONTEND_PID" ] && kill -KILL $FRONTEND_PID 2>/dev/null
+    graceful_kill_port 13001 "后端"
+    graceful_kill_port 13002 "前端"
     echo "服务已停止"
     exit 0
 }

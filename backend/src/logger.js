@@ -18,8 +18,23 @@ const LOG_LEVELS = {
   debug: 3
 };
 
-// 获取日志级别，默认为 info
-const currentLevel = (process.env.LOG_LEVEL || 'info').toLowerCase();
+// 日志级别(动态可调)
+let _currentLevelName = (process.env.LOG_LEVEL || 'info').toLowerCase();
+let _currentLevel = LOG_LEVELS[_currentLevelName] ?? LOG_LEVELS.info;
+
+export function getLogLevel() {
+  return _currentLevelName;
+}
+
+export function setLogLevel(level) {
+  const lv = String(level || 'info').toLowerCase();
+  if (LOG_LEVELS[lv] === undefined) {
+    throw new Error(`未知的日志级别: ${level}`);
+  }
+  _currentLevelName = lv;
+  _currentLevel = LOG_LEVELS[lv];
+  console.log(`[Logger] 日志级别已更新: ${lv}`);
+}
 
 // 日志配置
 const config = {
@@ -181,7 +196,7 @@ function formatMessage(level, prefix, args) {
  */
 function log(level, prefix, ...args) {
   const levelValue = getLevelValue(level);
-  const currentLevelValue = getLevelValue(currentLevel);
+  const currentLevelValue = _currentLevel;
   
   // 如果当前日志级别低于设置的级别，则不输出
   if (levelValue > currentLevelValue) {

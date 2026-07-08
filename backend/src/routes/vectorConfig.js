@@ -10,6 +10,17 @@ import {
 
 const router = express.Router();
 
+// 支持的向量维度白名单(防 SQL 注入 + 资源耗尽)
+// 任何不在列表中的 dimensions 一律拒绝
+const ALLOWED_DIMENSIONS = new Set([384, 768, 1024, 1536, 2048, 2560, 3072]);
+
+function assertAllowedDimensions(dims) {
+  if (dims === null || dims === undefined) return true;  // null/undefined 视为"自动检测"
+  // 严格类型校验:必须是 number 类型的整数
+  if (typeof dims !== 'number' || !Number.isInteger(dims)) return false;
+  return ALLOWED_DIMENSIONS.has(dims);
+}
+
 // ========== 向量维度自动检测 API（需要认证）==========
 
 /**
@@ -79,6 +90,14 @@ router.post('/embedding/dimensions/reinit', authMiddleware, async (req, res) => 
 
     // 使用检测到的维度或请求中指定的维度
     const targetDimensions = dimensions || detectedDimensions;
+
+    // 白名单校验(防 SQL 注入)
+    if (!assertAllowedDimensions(targetDimensions)) {
+      return res.status(400).json({
+        success: false,
+        error: `不支持的向量维度: ${targetDimensions}。允许值: ${[...ALLOWED_DIMENSIONS].join(', ')}`
+      });
+    }
 
     console.log(`[VecIndex Reinit] 目标维度: ${targetDimensions}`);
 
@@ -172,6 +191,14 @@ router.post('/embedding/dimensions/auto-adapter', authMiddleware, async (req, re
       return res.status(503).json({
         success: false,
         error: '无法连接到 embedding 服务，请确保本地 embedding 服务正在运行'
+      });
+    }
+
+    // 白名单校验
+    if (!assertAllowedDimensions(detectedDimensions)) {
+      return res.status(400).json({
+        success: false,
+        error: `Embedding 服务返回的维度 ${detectedDimensions} 不在白名单中。请联系管理员更新 ALLOWED_DIMENSIONS。`
       });
     }
 

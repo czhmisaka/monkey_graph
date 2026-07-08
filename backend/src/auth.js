@@ -1,14 +1,73 @@
 import jwt from 'jsonwebtoken';
 import { userOperations, agentOperations, agentApiLogOperations } from './database.js';
 
+// 敏感字段脱敏(用于审计日志)
+// 递归遍历对象,将字段名匹配敏感模式的字段值替换为 '[REDACTED]'
+const SENSITIVE_PATTERNS = [
+  /api[_-]?key/i,
+  /token/i,
+  /password/i,
+  /secret/i,
+  /^authorization$/i,
+  /^cookie$/i
+];
+
+export function redactSecrets(obj, depth = 0) {
+  if (depth > 5) return '[DEPTH_LIMIT]';
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(v => redactSecrets(v, depth + 1));
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (SENSITIVE_PATTERNS.some(p => p.test(k))) {
+      out[k] = '[REDACTED]';
+    } else {
+      out[k] = redactSecrets(v, depth + 1);
+    }
+  }
+  return out;
+}
+
 // JWT 密钥 - 必须通过环境变量配置
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   throw new Error('❌ 错误: JWT_SECRET 环境变量未设置。请在 .env 文件中配置 JWT_SECRET');
 }
 
-// Token 过期时间（默认永久不过期，可通过环境变量设置）
-const TOKEN_EXPIRY = process.env.TOKEN_EXPIRY || null;
+// Token 过期时间（强制设置;默认 24h,可通过环境变量调整）
+const TOKEN_EXPIRY = process.env.TOKEN_EXPIRY || '24h';
+
+// Cookie 名称与配置
+export const AUTH_COOKIE_NAME = 'mg_token';
+const COOKIE_MAX_AGE_MS = (() => {
+  // 解析 TOKEN_EXPIRY 为毫秒(支持 '7d', '24h', '60m', '3600s')
+  const m = String(TOKEN_EXPIRY).match(/^(\d+)([smhd])$/);
+  if (!m) return 24 * 3600 * 1000;
+  const n = parseInt(m[1], 10);
+  const unit = m[2];
+  const mult = { s: 1000, m: 60000, h: 3600000, d: 86400000 }[unit] || 3600000;
+  return n * mult;
+})();
+const COOKIE_SECURE = process.env.NODE_ENV === 'production';
+
+export function setAuthCookie(res, token) {
+  res.cookie(AUTH_COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: COOKIE_SECURE,
+    sameSite: 'lax',
+    maxAge: COOKIE_MAX_AGE_MS,
+    path: '/'
+  });
+}
+
+export function clearAuthCookie(res) {
+  res.clearCookie(AUTH_COOKIE_NAME, {
+    httpOnly: true,
+    secure: COOKIE_SECURE,
+    sameSite: 'lax',
+    path: '/'
+  });
+}
 
 // 生成 JWT Token
 export function generateToken(user) {
@@ -17,7 +76,7 @@ export function generateToken(user) {
     username: user.username,
     is_admin: user.is_admin || 0
   };
-  return TOKEN_EXPIRY ? jwt.sign(payload, JWT_SECRET, { expiresIn: TOKEN_EXPIRY }) : jwt.sign(payload, JWT_SECRET);
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: TOKEN_EXPIRY });
 }
 
 // 验证 JWT Token
@@ -32,13 +91,23 @@ export function verifyToken(token) {
 // ============ JWT 认证中间件 ============
 
 function jwtAuthMiddleware(req, res, next) {
-  const authHeader = req.headers.authorization;
+  let token = null;
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  // 优先从 httpOnly Cookie 读 token
+  if (req.cookies && req.cookies[AUTH_COOKIE_NAME]) {
+    token = req.cookies[AUTH_COOKIE_NAME];
+  } else {
+    // 回退: Authorization: Bearer <token>(用于 API/Agent 调用方)
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7);
+    }
+  }
+
+  if (!token) {
     return res.status(401).json({ error: '未提供认证令牌' });
   }
 
-  const token = authHeader.substring(7);
   const decoded = verifyToken(token);
 
   if (!decoded) {
@@ -178,7 +247,7 @@ function apiKeyAuthMiddleware(req, res, next) {
         response_time: responseTime,
         ip: req.ip || req.connection?.remoteAddress || 'unknown',
         user_agent: req.get('user-agent') || '',
-        request_body: req.body ? JSON.stringify(req.body).substring(0, 500) : '',
+        request_body: req.body ? JSON.stringify(redactSecrets(req.body)).substring(0, 500) : '',
         graph_id: graphId,
         graph_name: '',
         operation_type: operationType,
@@ -197,6 +266,20 @@ function apiKeyAuthMiddleware(req, res, next) {
 // ============ 可选认证中间件 ============
 
 function optionalAuthMiddleware(req, res, next) {
+  // 1) Cookie 优先
+  if (req.cookies && req.cookies[AUTH_COOKIE_NAME]) {
+    const decoded = verifyToken(req.cookies[AUTH_COOKIE_NAME]);
+    if (decoded) {
+      const user = userOperations.findById(decoded.id);
+      req.user = user || null;
+    } else {
+      req.user = null;
+    }
+    req.agent = null;
+    return next();
+  }
+
+  // 2) 回退到 Authorization 头
   const authHeader = req.headers.authorization;
 
   if (!authHeader) {

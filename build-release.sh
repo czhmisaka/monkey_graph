@@ -223,13 +223,13 @@ prepare_deploy_files() {
         print_success "已复制额外数据库"
     fi
     
-    # 复制环境变量文件（优先使用包含 API Key 的真实配置）
-    if [ -f "$BACKEND_DIR/.env" ]; then
-        cp "$BACKEND_DIR/.env" "$RELEASE_DIR/.env"
-        print_success "已复制环境变量文件（含 API Key）"
-    elif [ -f "$BACKEND_DIR/.env.example" ]; then
-        cp "$BACKEND_DIR/.env.example" "$RELEASE_DIR/.env"
-        print_warning "未找到 .env，已复制模板，请手动填写 API Key"
+    # 复制环境变量模板 (不打包真实 .env,避免泄露密钥)
+    if [ -f "$BACKEND_DIR/.env.example" ]; then
+        cp "$BACKEND_DIR/.env.example" "$RELEASE_DIR/.env.example"
+        print_success "已复制环境变量模板"
+        print_warning "请手动创建 $RELEASE_DIR/.env 并填入真实密钥(参考 .env.example)"
+    else
+        print_warning "未找到 .env.example,跳过环境变量文件"
     fi
     
     # 复制 Docker Compose 文件

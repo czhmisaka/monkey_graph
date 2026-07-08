@@ -22,7 +22,21 @@ const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
 if (!ENCRYPTION_KEY) {
   throw new Error('❌ 错误: ENCRYPTION_KEY 环境变量未设置。请在 .env 文件中配置 ENCRYPTION_KEY');
 }
-const IV_LENGTH = 16;
+
+// 解析密钥：支持 hex 64 字符（推荐）或短字符串（前 32 字节填充）。
+// 优先按 hex 解析；解析失败则回退到兼容旧实现的字符串截断方式（仅在迁移期）。
+function resolveEncryptionKey(rawKey) {
+  if (/^[0-9a-fA-F]{64}$/.test(rawKey)) {
+    return Buffer.from(rawKey, 'hex').subarray(0, 32);
+  }
+  // 兼容旧实现：截取前 32 字符，padEnd 32 字节
+  return Buffer.from(rawKey.slice(0, 32).padEnd(32, '0').slice(0, 32), 'utf8');
+}
+const KEY_BUF = resolveEncryptionKey(ENCRYPTION_KEY);
+
+// 加密格式版本标识：用于检测旧 CBC 密文并自动迁移
+const GCM_AAD = Buffer.from('user_llm_config');
+const IV_LENGTH_GCM = 12; // GCM 推荐 12 字节
 
 /**
  * 转义 SQL LIKE 模式中的特殊字符
@@ -32,41 +46,74 @@ const IV_LENGTH = 16;
  */
 const escapeLikePattern = (str) => {
   if (!str) return '';
-  // 转义 SQL LIKE 的特殊字符：% (匹配任意字符串), _ (匹配任意单个字符), \ (转义字符本身)
   return str.replace(/[%_\\]/g, '\\$&');
 };
 
-// 加密 API Key
+// 加密 API Key（AES-256-GCM 认证加密）
+// 输出格式：gcm1:<iv-hex>:<authTag-hex>:<ciphertext-hex>
+// 旧 CBC 格式为：<iv-hex>:<ciphertext-hex>（2 段）—— 通过前缀自动识别
 function encryptAPIKey(text) {
   if (!text) return '';
   try {
-    const iv = crypto.randomBytes(IV_LENGTH);
-    const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY.slice(0, 32).padEnd(32, '0').slice(0, 32)), iv);
-    let encrypted = cipher.update(text, 'utf8', 'hex');
-    encrypted += cipher.final('hex');
-    return iv.toString('hex') + ':' + encrypted;
+    const iv = crypto.randomBytes(IV_LENGTH_GCM);
+    const cipher = crypto.createCipheriv('aes-256-gcm', KEY_BUF, iv);
+    cipher.setAAD(GCM_AAD);
+    const ct = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    return `gcm1:${iv.toString('hex')}:${tag.toString('hex')}:${ct.toString('hex')}`;
   } catch (error) {
     console.error('加密失败:', error);
     return text;
   }
 }
 
-// 解密 API Key
+// 解密 API Key。支持自动迁移旧 CBC 密文（一次性就地重加密）。
+// 返回 null 表示认证失败 / 密文损坏。
 function decryptAPIKey(text) {
   if (!text) return '';
+  if (!text.startsWith('gcm1:')) {
+    // 旧 CBC 格式：尝试解密并就地迁移
+    try {
+      const parts = text.split(':');
+      if (parts.length !== 2) {
+        console.warn('[decryptAPIKey] 非 GCM 格式且非 CBC 格式 (parts !== 2)');
+        return null;
+      }
+      const iv = Buffer.from(parts[0], 'hex');
+      const ctBuf = Buffer.from(parts[1], 'hex');
+      const decipher = crypto.createDecipheriv('aes-256-cbc', KEY_BUF, iv);
+      const plain = Buffer.concat([decipher.update(ctBuf), decipher.final()]).toString('utf8');
+      // 就地升级为 GCM 格式（基于调用栈外层做 UPDATE）
+      console.warn(`[decryptAPIKey] 检测到旧 CBC 密文,迁移至 GCM`);
+      return { __migrate: plain };
+    } catch (error) {
+      console.error('[decryptAPIKey] 旧 CBC 解密失败:', error.message);
+      return null;
+    }
+  }
   try {
     const parts = text.split(':');
-    if (parts.length !== 2) return text;
-    const iv = Buffer.from(parts[0], 'hex');
-    const encryptedText = parts[1];
-    const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY.slice(0, 32).padEnd(32, '0').slice(0, 32)), iv);
-    let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    return decrypted;
+    if (parts.length !== 4) {
+      console.warn('[decryptAPIKey] GCM 格式错误 (parts !== 4)');
+      return null;
+    }
+    const iv = Buffer.from(parts[1], 'hex');
+    const tag = Buffer.from(parts[2], 'hex');
+    const ctBuf = Buffer.from(parts[3], 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', KEY_BUF, iv);
+    decipher.setAAD(GCM_AAD);
+    decipher.setAuthTag(tag);
+    const plain = Buffer.concat([decipher.update(ctBuf), decipher.final()]).toString('utf8');
+    return plain;
   } catch (error) {
-    console.error('解密失败:', error);
-    return text;
+    console.error('[decryptAPIKey] GCM 解密失败 (可能被篡改):', error.message);
+    return null;
   }
+}
+
+// 提供给调用方在 UPDATE 后调用,完成旧密文迁移
+function reencryptAPIKey(text) {
+  return encryptAPIKey(text);
 }
 
 // 确保 data 目录存在
@@ -379,9 +426,10 @@ const getDefaultSettings = () => {
 // 用户操作
 export const userOperations = {
   // 创建用户
-  create(user) {
+  async create(user) {
     const id = crypto.randomUUID();
-    const hashedPassword = bcrypt.hashSync(user.password, 10);
+    const rounds = parseInt(process.env.BCRYPT_ROUNDS) || 12;
+    const hashedPassword = await bcrypt.hash(user.password, rounds);
     const stmt = db.prepare(`
       INSERT INTO users (id, username, password)
       VALUES (?, ?, ?)
@@ -400,9 +448,9 @@ export const userOperations = {
     return db.prepare('SELECT id, username, avatar, bio, is_admin, created_at, updated_at FROM users WHERE id = ?').get(id);
   },
 
-  // 验证密码
-  verifyPassword(password, hashedPassword) {
-    return bcrypt.compareSync(password, hashedPassword);
+  // 验证密码 (异步,避免阻塞事件循环)
+  async verifyPassword(password, hashedPassword) {
+    return await bcrypt.compare(password, hashedPassword);
   },
 
   // 获取用户列表（仅管理员使用）
@@ -528,9 +576,25 @@ export const userLLMConfigOperations = {
   },
 
   // 获取解密后的 API Key（内部使用）
+  // 如果遇到旧 CBC 密文,自动就地迁移至 GCM 格式
   getDecryptedApiKey(id) {
-    const config = db.prepare('SELECT api_key FROM user_llm_configs WHERE id = ?').get(id);
-    return config ? decryptAPIKey(config.api_key) : '';
+    const config = db.prepare('SELECT id, api_key FROM user_llm_configs WHERE id = ?').get(id);
+    if (!config) return '';
+    const result = decryptAPIKey(config.api_key);
+    if (result === null) return '';
+    if (typeof result === 'object' && result.__migrate) {
+      // 旧 CBC 格式,就地升级为 GCM
+      try {
+        const newBlob = reencryptAPIKey(result.__migrate);
+        db.prepare('UPDATE user_llm_configs SET api_key = ? WHERE id = ?').run(newBlob, config.id);
+        console.log(`[getDecryptedApiKey] id=${config.id} 已从 CBC 迁移至 GCM`);
+        return result.__migrate;
+      } catch (e) {
+        console.error(`[getDecryptedApiKey] 迁移失败 id=${config.id}:`, e.message);
+        return result.__migrate;
+      }
+    }
+    return result;
   },
 
   // 创建 LLM 配置（加密存储 API Key）
@@ -1888,6 +1952,19 @@ export const graphAgentPermissionOperations = {
       WHERE gap.agent_id = ?
       ORDER BY gap.created_at DESC
     `).all(agentId);
+  },
+
+  // 批量获取多个图谱的授权(单次 SQL,避免 N+1)
+  getByGraphIds(graphIds) {
+    if (!graphIds || graphIds.length === 0) return [];
+    const placeholders = graphIds.map(() => '?').join(',');
+    return db.prepare(`
+      SELECT gap.*, a.name as agent_name, a.description as agent_description, a.is_active as agent_is_active
+      FROM graph_agent_permissions gap
+      JOIN agents a ON gap.agent_id = a.id
+      WHERE gap.graph_id IN (${placeholders})
+      ORDER BY gap.created_at DESC
+    `).all(...graphIds);
   },
 
   // 获取 Agent 对指定图谱的授权

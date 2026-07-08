@@ -4,55 +4,30 @@ import axios from 'axios'
 const MAX_RETRIES = 3
 const RETRY_DELAY = 1000
 
-// Token 存储键名
-const TOKEN_KEY = 'monkeygraph_token'
-const USER_KEY = 'monkeygraph_user'
+// 当前登录用户 (单例 ref, 由 useAuth composable 维护)
+// 不持久化到 localStorage;每次启动从 /auth/me 重新拉取
+let currentUser = null
+const userListeners = new Set()
 
-// 获取 Token
-export function getToken() {
-  return localStorage.getItem(TOKEN_KEY)
+export function getCurrentUser() {
+  return currentUser
 }
 
-// 设置 Token
-export function setToken(token) {
-  localStorage.setItem(TOKEN_KEY, token)
+export function setCurrentUser(user) {
+  currentUser = user
+  for (const fn of userListeners) fn(user)
 }
 
-// 清除 Token
-export function clearToken() {
-  localStorage.removeItem(TOKEN_KEY)
-  localStorage.removeItem(USER_KEY)
-}
-
-// 获取用户信息
-export function getUser() {
-  const userStr = localStorage.getItem(USER_KEY)
-  return userStr ? JSON.parse(userStr) : null
-}
-
-// 设置用户信息
-export function setUser(user) {
-  localStorage.setItem(USER_KEY, JSON.stringify(user))
+export function onUserChange(fn) {
+  userListeners.add(fn)
+  return () => userListeners.delete(fn)
 }
 
 const api = axios.create({
   baseURL: '/api',
-  timeout: 60000
+  timeout: 60000,
+  withCredentials: true  // 发送 httpOnly cookie
 })
-
-// 请求拦截器 - 添加 Token 到请求头
-api.interceptors.request.use(
-  config => {
-    const token = getToken()
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
-    }
-    return config
-  },
-  error => {
-    return Promise.reject(error)
-  }
-)
 
 // 响应拦截器 - 统一错误处理
 api.interceptors.response.use(
@@ -202,19 +177,16 @@ export const graphAPI = {
    */
   getGraphStream(graphId, onBatch, onProgress) {
     return new Promise((resolve, reject) => {
-      const token = getToken()
       const startTime = Date.now()
       const batchLogs = []
-      
+
       console.group(`🌐 流式加载图谱 [${graphId}]`)
       console.log('📡 正在建立 SSE 连接...')
-      
+
       fetch(`/api/graphs/${graphId}/graph/stream`, {
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        }
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }
       })
         .then(response => {
           if (!response.ok) {
@@ -477,13 +449,10 @@ export const chatAPI = {
       let retryCount = 0
       
       const attemptRequest = () => {
-        const token = getToken()
         fetch('/api/chat/stream', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-          },
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ messages, graphId })
         })
           .then(response => {
@@ -563,16 +532,30 @@ export const mcpAPI = {
 // 用户认证
 export const authAPI = {
   // 注册
-  register(username, password) {
-    return api.post('/auth/register', { username, password })
+  async register(username, password) {
+    const res = await api.post('/auth/register', { username, password })
+    if (res?.user) setCurrentUser(res.user)
+    return res
   },
   // 登录
-  login(username, password) {
-    return api.post('/auth/login', { username, password })
+  async login(username, password) {
+    const res = await api.post('/auth/login', { username, password })
+    if (res?.user) setCurrentUser(res.user)
+    return res
+  },
+  // 注销 (清 httpOnly cookie)
+  async logout() {
+    try {
+      await api.post('/auth/logout')
+    } finally {
+      setCurrentUser(null)
+    }
   },
   // 获取当前用户信息
-  getCurrentUser() {
-    return api.get('/auth/me')
+  async getCurrentUser() {
+    const res = await api.get('/auth/me')
+    setCurrentUser(res?.user || null)
+    return res
   },
   // 更新用户资料
   updateProfile(data) {
@@ -735,13 +718,9 @@ export const ontologyAPI = {
    */
   generateWithProgress(formData, onProgress) {
     return new Promise((resolve, reject) => {
-      const token = getToken()
-      
       fetch('/api/graph/ontology/generate', {
         method: 'POST',
-        headers: {
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
+        credentials: 'include',
         body: formData
       })
         .then(response => {

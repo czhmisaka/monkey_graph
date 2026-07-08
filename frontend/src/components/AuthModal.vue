@@ -1,6 +1,6 @@
 <script setup>
 import { ref, reactive, watch, nextTick } from 'vue'
-import { authAPI, setToken, setUser } from '../api'
+import { authAPI, setCurrentUser } from '../api'
 
 const props = defineProps({
   show: {
@@ -72,11 +72,10 @@ const submitAuth = async () => {
     }
     
     console.log('登录/注册成功:', response)
-    
-    // 保存 token 和用户信息
-    setToken(response.token)
-    setUser(response.user)
-    
+
+    // 后端已通过 httpOnly cookie 下发 token;前端仅缓存 user
+    if (response?.user) setCurrentUser(response.user)
+
     // 关闭弹窗并重置表单
     emit('close')
     emit('login-success', response.user)

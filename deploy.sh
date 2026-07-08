@@ -166,7 +166,9 @@ check_ports() {
     # Check port 13001 (backend)
     if lsof -ti:13001 > /dev/null 2>&1; then
         print_warning "$(printf "$MSG_PORT_WARNING" "13001")"
-        lsof -ti:13001 | xargs kill -9 2>/dev/null || true
+        lsof -ti:13001 | xargs -r kill -TERM 2>/dev/null || true
+        sleep 5
+        lsof -ti:13001 | xargs -r kill -KILL 2>/dev/null || true
         sleep 1
         print_success "$(printf "$MSG_PORT_FREED" "13001")"
     else
@@ -176,7 +178,9 @@ check_ports() {
     # Check port 13002 (frontend dev)
     if lsof -ti:13002 > /dev/null 2>&1; then
         print_warning "$(printf "$MSG_PORT_WARNING" "13002")"
-        lsof -ti:13002 | xargs kill -9 2>/dev/null || true
+        lsof -ti:13002 | xargs -r kill -TERM 2>/dev/null
+            sleep 5
+            lsof -ti:13002 | xargs -r kill -KILL 2>/dev/null || true
         sleep 1
         print_success "$(printf "$MSG_PORT_FREED" "13002")"
     else
@@ -325,7 +329,9 @@ start_services() {
             echo ""
             print_step "$MSG_CLEANUP"
             kill $BACKEND_PID 2>/dev/null
-            lsof -ti:13001 | xargs kill -9 2>/dev/null
+            lsof -ti:13001 | xargs -r kill -TERM 2>/dev/null
+            sleep 5
+            lsof -ti:13001 | xargs -r kill -KILL 2>/dev/null
             print_success "Services stopped"
             exit 0
         }
@@ -373,8 +379,12 @@ start_services() {
             print_step "$MSG_CLEANUP"
             kill $BACKEND_PID 2>/dev/null
             kill $FRONTEND_PID 2>/dev/null
-            lsof -ti:13001 | xargs kill -9 2>/dev/null
-            lsof -ti:13002 | xargs kill -9 2>/dev/null
+            lsof -ti:13001 | xargs -r kill -TERM 2>/dev/null
+            sleep 5
+            lsof -ti:13001 | xargs -r kill -KILL 2>/dev/null
+            lsof -ti:13002 | xargs -r kill -TERM 2>/dev/null
+            sleep 5
+            lsof -ti:13002 | xargs -r kill -KILL 2>/dev/null
             print_success "Services stopped"
             exit 0
         }

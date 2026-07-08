@@ -20,7 +20,7 @@ router.get('/graphs', authMiddleware, (req, res) => {
     let graphs;
 
     // 检查是否是管理员用户
-    const isAdmin = req.user.username === 'admin' || req.user.is_admin === 1;
+    const isAdmin = req.user.is_admin === 1;
 
     if (isAdmin) {
       // 管理员可以查看所有图谱
@@ -144,7 +144,7 @@ router.get('/graphs/:id', authMiddleware, (req, res) => {
     const graph = graphOperations.getByIdAndUserId(req.params.id, req.user.id);
 
     // 检查是否是管理员
-    const isAdmin = req.user.username === 'admin' || req.user.is_admin === 1;
+    const isAdmin = req.user.is_admin === 1;
 
     // 如果不是管理员且图谱不属于当前用户，返回 404
     if (!graph && !isAdmin) {
@@ -245,7 +245,7 @@ router.delete('/graphs/:id', authMiddleware, (req, res) => {
     let oldGraph = graphOperations.getByIdAndUserId(req.params.id, req.user.id);
 
     // 如果找不到，检查是否是管理员
-    const isAdmin = req.user.username === 'admin' || req.user.is_admin === 1;
+    const isAdmin = req.user.is_admin === 1;
 
     // 如果是管理员，可以删除任何图谱
     if (!oldGraph && isAdmin) {
@@ -255,23 +255,9 @@ router.delete('/graphs/:id', authMiddleware, (req, res) => {
       }
     }
 
-    // 如果仍然找不到，检查图谱的 user_id 是否为已删除的 Agent（以 agent- 开头但不存在于 agents 表）
+    // 如果仍然找不到,返回 403(权限不足,不暴露存在性)
     if (!oldGraph) {
-      const graph = graphOperations.getById(req.params.id);
-      if (graph && graph.user_id && graph.user_id.startsWith('agent-')) {
-        // 检查这个 agent 是否存在
-        const db = require('../database.js').default;
-        const agentExists = db.prepare('SELECT id FROM agents WHERE id = ?').get(graph.user_id);
-        if (!agentExists) {
-          // Agent 已删除，允许创建图谱的原始用户删除（通过检查 graph_agent_permissions 或其他线索）
-          // 这里简化为：任何认证用户都可以删除由已删除 Agent 创建的图谱
-          oldGraph = graph;
-        }
-      }
-    }
-
-    if (!oldGraph) {
-      return res.status(404).json({ error: '图谱不存在或无权限删除' });
+      return res.status(403).json({ error: '无权删除此图谱' });
     }
 
     graphOperations.delete(req.params.id);
@@ -325,7 +311,7 @@ router.get('/graphs/:id/settings', authMiddleware, (req, res) => {
     }
 
     // 检查是否是管理员
-    const isAdmin = req.user.username === 'admin' || req.user.is_admin === 1;
+    const isAdmin = req.user.is_admin === 1;
 
     // 使用 canAccessGraph 函数检查权限（管理员除外）
     if (!isAdmin && !canAccessGraph(graph, req.user)) {
@@ -349,7 +335,7 @@ router.put('/graphs/:id/settings', authMiddleware, (req, res) => {
     }
 
     // 检查是否是管理员
-    const isAdmin = req.user.username === 'admin' || req.user.is_admin === 1;
+    const isAdmin = req.user.is_admin === 1;
 
     // 使用 canWriteGraph 函数检查权限（管理员除外）
     if (!isAdmin && !canWriteGraph(graph, req.user)) {

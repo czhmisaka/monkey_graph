@@ -60,6 +60,9 @@ WORKDIR /app
 COPY --from=backend-builder /app/node_modules ./node_modules
 COPY --from=backend-builder /app/src ./src
 
+# 复制数据库迁移
+COPY migrations ./migrations
+
 # 复制前端构建产物（后端期望路径：/app/frontend/dist）
 COPY --from=frontend-builder /app/dist ./frontend/dist
 
@@ -82,5 +85,6 @@ EXPOSE 13001
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:13001/health || exit 1
 
-# 启动命令：使用生产模式启动（前后端合并）
-CMD ["sh", "-c", "cd /app && node src/index.js"]
+# 启动命令: 先运行迁移,再启动后端
+# 迁移失败时容器退出(让编排器感知)
+CMD ["sh", "-c", "cd /app && node migrations/migrator.js && node src/index.js"]

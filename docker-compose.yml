@@ -10,15 +10,16 @@ services:
     image: czh_graph-monkeygraph:latest
     container_name: monkeygraph-app
     
-    # 使用 root 用户运行（解决宿主机与容器用户 UID 不同导致的权限问题）
-    # SQLite 和 sqlite-vec 需要写入数据库文件
-    user: "0:0"
-    
+    # 使用 Dockerfile 中定义的 USER (nodejs, uid 1001)
+    # 数据卷权限由 deploy-docker.sh 在启动前 chown 保证
+    # 移除 user: "0:0" 以遵循最小权限原则
+    # user: "1001:1001"  # 如需显式指定,取消注释
+
     # 端口映射：宿主机 PORT -> 容器13001
     # PORT 环境变量由 deploy-docker.sh 设置，默认为 13001
     ports:
       - "${PORT:-13001}:13001"
-    
+
     # 环境变量（从 .env 文件加载）
     env_file:
       - ./.env

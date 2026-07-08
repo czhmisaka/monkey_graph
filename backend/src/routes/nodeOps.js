@@ -4,6 +4,7 @@ import { graphOperations, nodeOperations, historyOperations, vecSearchOperations
 import { authMiddleware } from '../auth.js';
 import { getEmbedding, nodeToEmbeddingText } from '../services/embeddingService.js';
 import { logger, auditLogger } from '../logger.js';
+import { assertGraphAccess } from './_helpers.js';
 
 const router = express.Router();
 
@@ -16,29 +17,8 @@ router.get('/graphs/:graphId/nodes', authMiddleware, (req, res) => {
     const { graphId } = req.params;
     const { page, limit, type, sort, order } = req.query;
 
-    // 验证图谱权限（支持用户图谱、Agent 创建的图谱、管理员访问）
-    let graph = graphOperations.getByIdAndUserId(graphId, req.user.id);
-    
-    // 检查是否是管理员
-    const isAdmin = req.user.username === 'admin' || req.user.is_admin === 1;
-
-    // 如果不是管理员且图谱不属于当前用户，检查是否是 Agent 创建的图谱
-    if (!graph && !isAdmin) {
-      const anyGraph = graphOperations.getById(graphId);
-      if (anyGraph && anyGraph.user_id && anyGraph.user_id.startsWith('agent-')) {
-        graph = anyGraph;
-      }
-    }
-
-    // 如果图谱不属于当前用户，但当前用户是管理员，则获取图谱（不验证 owner）
-    if (!graph && isAdmin) {
-      graph = graphOperations.getById(graphId);
-    }
-
-    // 如果仍然没有找到图谱，返回 404
-    if (!graph) {
-      return res.status(404).json({ error: '图谱不存在' });
-    }
+    const graph = assertGraphAccess(req, res, graphId);
+    if (!graph) return;
     
     // 获取所有节点
     let nodes = nodeOperations.getByGraphId(graphId);
@@ -119,34 +99,9 @@ router.get('/graphs/:graphId/nodes', authMiddleware, (req, res) => {
 router.get('/graphs/:graphId/nodes/:id', authMiddleware, (req, res) => {
   try {
     const { graphId, id } = req.params;
-    // 验证图谱是否属于当前用户
-    let graph = graphOperations.getByIdAndUserId(graphId, req.user.id);
+    const graph = assertGraphAccess(req, res, graphId);
+    if (!graph) return;
 
-    // 检查是否是管理员
-    const isAdmin = req.user.username === 'admin' || req.user.is_admin === 1;
-
-    // 如果不是管理员且图谱不属于当前用户，检查是否是 Agent 创建的图谱
-    if (!graph && !isAdmin) {
-      const anyGraph = graphOperations.getById(graphId);
-      if (anyGraph && anyGraph.user_id && anyGraph.user_id.startsWith('agent-')) {
-        graph = anyGraph;
-      }
-    }
-
-    // 如果图谱不属于当前用户，但当前用户是管理员，则获取图谱（不验证 owner）
-    if (!graph && isAdmin) {
-      graph = graphOperations.getById(graphId);
-      if (!graph) {
-        return res.status(404).json({ error: '图谱不存在' });
-      }
-    }
-
-    // 如果仍然没有找到图谱，返回 404
-    if (!graph) {
-      return res.status(404).json({ error: '图谱不存在' });
-    }
-
-    // 验证节点是否属于该图谱
     const node = nodeOperations.getById(id);
     if (!node || node.graph_id !== graphId) {
       return res.status(404).json({ error: '节点不存在' });
@@ -167,11 +122,8 @@ router.post('/graphs/:graphId/nodes', authMiddleware, (req, res) => {
       return res.status(400).json({ error: '节点标签不能为空' });
     }
 
-    // 验证图谱是否属于当前用户
-    const graph = graphOperations.getByIdAndUserId(graphId, req.user.id);
-    if (!graph) {
-      return res.status(404).json({ error: '图谱不存在' });
-    }
+    const graph = assertGraphAccess(req, res, graphId);
+    if (!graph) return;
 
     const newNode = nodeOperations.createForGraph({
       id: uuidv4(),
@@ -199,12 +151,8 @@ router.post('/graphs/:graphId/nodes', authMiddleware, (req, res) => {
 router.put('/graphs/:graphId/nodes/:id', authMiddleware, async (req, res) => {
   try {
     const { graphId, id } = req.params;
-    // 验证图谱是否属于当前用户
-    const graph = graphOperations.getByIdAndUserId(graphId, req.user.id);
-    if (!graph) {
-      return res.status(404).json({ error: '图谱不存在' });
-    }
-    // 验证节点是否属于该图谱
+    const graph = assertGraphAccess(req, res, graphId);
+    if (!graph) return;
     const oldNode = nodeOperations.getById(id);
     if (!oldNode || oldNode.graph_id !== graphId) {
       return res.status(404).json({ error: '节点不存在' });
@@ -250,12 +198,8 @@ router.put('/graphs/:graphId/nodes/:id', authMiddleware, async (req, res) => {
 router.delete('/graphs/:graphId/nodes/:id', authMiddleware, (req, res) => {
   try {
     const { graphId, id } = req.params;
-    // 验证图谱是否属于当前用户
-    const graph = graphOperations.getByIdAndUserId(graphId, req.user.id);
-    if (!graph) {
-      return res.status(404).json({ error: '图谱不存在' });
-    }
-    // 验证节点是否属于该图谱
+    const graph = assertGraphAccess(req, res, graphId);
+    if (!graph) return;
     const oldNode = nodeOperations.getById(id);
     if (!oldNode || oldNode.graph_id !== graphId) {
       return res.status(404).json({ error: '节点不存在' });
@@ -287,11 +231,8 @@ router.delete('/graphs/:graphId/nodes/:id', authMiddleware, (req, res) => {
 router.get('/graphs/:graphId/nodes/search/:keyword', authMiddleware, (req, res) => {
   try {
     const { graphId } = req.params;
-    // 验证图谱是否属于当前用户
-    const graph = graphOperations.getByIdAndUserId(graphId, req.user.id);
-    if (!graph) {
-      return res.status(404).json({ error: '图谱不存在' });
-    }
+    const graph = assertGraphAccess(req, res, graphId);
+    if (!graph) return;
     const results = nodeOperations.searchByGraphId(graphId, req.params.keyword);
     res.json(results.map(n => ({ ...n, properties: JSON.parse(n.properties || '{}') })));
   } catch (error) {
@@ -309,11 +250,8 @@ router.put('/graphs/:graphId/nodes/positions', authMiddleware, (req, res) => {
       return res.status(400).json({ error: '位置数据格式错误' });
     }
 
-    // 验证图谱是否属于当前用户
-    const graph = graphOperations.getByIdAndUserId(graphId, req.user.id);
-    if (!graph) {
-      return res.status(404).json({ error: '图谱不存在' });
-    }
+    const graph = assertGraphAccess(req, res, graphId);
+    if (!graph) return;
 
     nodeOperations.updatePositions(graphId, positions);
     res.json({ success: true, message: '位置已保存' });

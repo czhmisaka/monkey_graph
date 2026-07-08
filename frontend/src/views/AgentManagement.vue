@@ -1,8 +1,9 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { myAgentAPI, agentLogsAPI, getUser, getToken } from '../api'
+import { myAgentAPI, agentLogsAPI, getCurrentUser } from '../api'
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 
 const router = useRouter()
 const agents = ref([])
@@ -152,23 +153,17 @@ const loadingAuthAgents = ref(false)
 const loadAllGraphsAuth = async () => {
   try {
     // 获取用户的所有图谱
-    const graphsRes = await fetch('/api/graphs', {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('monkeygraph_token')}` }
-    })
+    const graphsRes = await fetch('/api/graphs', { credentials: 'include' })
     const graphsData = await graphsRes.json()
-    
+
     // 获取所有可用的 Agent
-    const agentsRes = await fetch('/api/agents', {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('monkeygraph_token')}` }
-    })
+    const agentsRes = await fetch('/api/agents', { credentials: 'include' })
     availableAgents.value = await agentsRes.json()
-    
+
     // 获取每个图谱的授权信息
     const authPromises = graphsData.map(async (graph) => {
       try {
-        const authRes = await fetch(`/api/graphs/${graph.id}/agents`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('monkeygraph_token')}` }
-        })
+        const authRes = await fetch(`/api/graphs/${graph.id}/agents`, { credentials: 'include' })
         const authData = await authRes.json()
         return {
           graph,
@@ -208,10 +203,8 @@ const authorizeAgent = async (graphId, agentId, permission = 'read') => {
   try {
     const res = await fetch(`/api/graphs/${graphId}/agents`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('monkeygraph_token')}`,
-        'Content-Type': 'application/json'
-      },
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ agent_id: agentId, permission })
     })
     const data = await res.json()
@@ -233,7 +226,7 @@ const revokeAgentAuth = async (graphId, agentId) => {
   try {
     const res = await fetch(`/api/graphs/${graphId}/agents/${agentId}`, {
       method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('monkeygraph_token')}` }
+      credentials: 'include'
     })
     const data = await res.json()
     if (!res.ok) {
@@ -253,10 +246,8 @@ const updateAgentPermission = async (graphId, agentId, permission) => {
   try {
     const res = await fetch(`/api/graphs/${graphId}/agents/${agentId}`, {
       method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('monkeygraph_token')}`,
-        'Content-Type': 'application/json'
-      },
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ permission })
     })
     const data = await res.json()
@@ -452,24 +443,33 @@ Authorization: Agent your-api-key
 - 更新日期：2026/3/11
 `
 
-// 渲染 Markdown
+// 渲染 Markdown (DOMPurify 净化以防 XSS)
 const renderedDocs = computed(() => {
-  return marked(openclawDocs)
+  const raw = marked.parse(openclawDocs.value || '')
+  return DOMPurify.sanitize(raw, {
+    ALLOWED_TAGS: ['h1','h2','h3','h4','h5','h6','p','ul','ol','li','code','pre','blockquote','a','strong','em','table','thead','tbody','tr','th','td','hr','br'],
+    ALLOWED_ATTR: ['href','title'],
+    ALLOWED_URI_REGEXP: /^(?:https?|mailto):/i
+  })
 })
 
-// 检查登录状态
-const checkAuth = () => {
+// 检查登录状态 — 调 /auth/me 校验 httpOnly cookie
+const checkAuth = async () => {
   checkingAuth.value = true
-  const user = getUser()
-  const token = getToken()
-  
-  if (!user || !token) {
+  try {
+    const res = await authAPI.getCurrentUser()
+    if (res?.user) {
+      isLoggedIn.value = true
+    } else {
+      isLoggedIn.value = false
+      error.value = '请先登录后再访问 Agent 管理页面'
+    }
+  } catch {
     isLoggedIn.value = false
     error.value = '请先登录后再访问 Agent 管理页面'
-  } else {
-    isLoggedIn.value = true
+  } finally {
+    checkingAuth.value = false
   }
-  checkingAuth.value = false
 }
 
 // 跳转到登录
@@ -481,9 +481,7 @@ const goToLogin = () => {
 const loadAgents = async () => {
   // 先检查登录状态
   if (!isLoggedIn.value) {
-    const user = getUser()
-    const token = getToken()
-    if (!user || !token) {
+    if (!getCurrentUser()) {
       error.value = '请先登录后再访问 Agent 管理页面'
       loading.value = false
       return

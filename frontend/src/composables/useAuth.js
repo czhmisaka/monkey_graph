@@ -1,5 +1,5 @@
 import { ref, computed, inject } from 'vue'
-import { authAPI, setToken, clearToken, setUser, getUser, getToken } from '../api'
+import { authAPI, getCurrentUser, setCurrentUser } from '../api'
 
 export function useAuth() {
   const auth = inject('auth')
@@ -14,9 +14,8 @@ export function useAuth() {
   const authError = ref('')
 
   // Computed
-  const isLoggedIn = computed(() => !!auth?.currentUser?.value)
-  const currentUser = computed(() => auth?.currentUser?.value || null)
-  const token = computed(() => getToken())
+  const isLoggedIn = computed(() => !!auth?.currentUser?.value || !!getCurrentUser())
+  const currentUser = computed(() => auth?.currentUser?.value || getCurrentUser() || null)
 
   // Functions
   const openAuthModal = (mode = 'login') => {
@@ -26,15 +25,12 @@ export function useAuth() {
   }
 
   const checkAuth = async () => {
-    if (!getToken()) {
-      return false
-    }
     try {
-      const user = await authAPI.getCurrentUser()
-      if (auth?.currentUser) {
-        auth.currentUser.value = user
+      const res = await authAPI.getCurrentUser()
+      if (auth?.currentUser && res?.user) {
+        auth.currentUser.value = res.user
       }
-      return true
+      return !!res?.user
     } catch (error) {
       console.error('Auth check failed:', error)
       return false
@@ -47,16 +43,10 @@ export function useAuth() {
 
     try {
       const response = await authAPI.login(username, password)
-
-      // Save token and user info
-      setToken(response.token)
-      setUser(response.user)
-
-      // Sync to global auth
-      if (auth?.currentUser) {
-        auth.currentUser.value = response.user
+      if (response?.user) {
+        setCurrentUser(response.user)
+        if (auth?.currentUser) auth.currentUser.value = response.user
       }
-
       return response
     } catch (error) {
       authError.value = error.message
@@ -66,11 +56,16 @@ export function useAuth() {
     }
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     if (auth?.logout) {
-      auth.logout()
+      try { await auth.logout() } catch {}
     }
-    clearToken()
+    try {
+      await authAPI.logout()
+    } finally {
+      setCurrentUser(null)
+      if (auth?.currentUser) auth.currentUser.value = null
+    }
   }
 
   const submitAuth = async () => {
@@ -90,16 +85,11 @@ export function useAuth() {
         response = await authAPI.register(authForm.value.username, authForm.value.password)
       }
 
-      // Save token and user info
-      setToken(response.token)
-      setUser(response.user)
-
-      // Sync to global auth
-      if (auth?.currentUser) {
-        auth.currentUser.value = response.user
+      if (response?.user) {
+        setCurrentUser(response.user)
+        if (auth?.currentUser) auth.currentUser.value = response.user
       }
 
-      // Reset form
       authForm.value.username = ''
       authForm.value.password = ''
 
@@ -113,17 +103,12 @@ export function useAuth() {
   }
 
   return {
-    // State
-    auth,
     isLoginMode,
     authForm,
     authFormLoading,
     authError,
-    // Computed
     isLoggedIn,
     currentUser,
-    token,
-    // Functions
     openAuthModal,
     checkAuth,
     handleLogin,

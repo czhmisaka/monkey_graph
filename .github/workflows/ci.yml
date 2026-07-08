@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main, allNew]
+  pull_request:
+    branches: [main, allNew]
+
+jobs:
+  backend-test:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install better-sqlite3 build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends python3 make g++
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run unit tests
+        working-directory: backend
+        run: npm test
+
+  backend-syntax:
+    name: Backend Syntax Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Check ESM syntax
+        run: |
+          for f in $(find backend/src -name '*.js'); do
+            node --input-type=module --check < "$f" || { echo "SYNTAX ERROR: $f"; exit 1; }
+          done
+
+  frontend-build:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+  docker-build:
+    name: Docker Image Build
+    runs-on: ubuntu-latest
+    needs: [backend-test, frontend-build]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t monkeygraph:test .
+      - name: Check image USER is non-root
+        run: |
+          USER=$(docker run --rm monkeygraph:test id -u)
+          if [ "$USER" = "0" ]; then
+            echo "ERROR: 容器以 root 运行"
+            exit 1
+          fi
+          echo "✓ 容器以 UID $USER 运行"

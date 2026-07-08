@@ -2,7 +2,7 @@
 import { ref, onMounted, inject, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import * as d3 from 'd3'
-import { authAPI, statsAPI, graphsAPI, usageAPI, getToken, clearToken } from '../api/index.js'
+import { authAPI, statsAPI, graphsAPI, usageAPI, setCurrentUser } from '../api/index.js'
 import SaasHeader from '../components/Layout/SaasHeader.vue'
 
 const router = useRouter()
@@ -261,21 +261,18 @@ const formatNumber = (num) => {
   return num.toLocaleString()
 }
 
-// 检查登录状态
+// 检查登录状态 — cookie 自动随 /auth/me 请求发送
 onMounted(async () => {
-  const token = getToken()
-  if (token) {
-    try {
-      const res = await authAPI.getCurrentUser()
+  try {
+    const res = await authAPI.getCurrentUser()
+    if (res?.user) {
       currentUser.value = res.user
-      if (auth?.currentUser) {
-        auth.currentUser.value = res.user
-      }
-      // 加载用户使用量
+      setCurrentUser(res.user)
+      if (auth?.currentUser) auth.currentUser.value = res.user
       loadUserUsage()
-    } catch (e) {
-      clearToken()
     }
+  } catch {
+    // 未登录或会话失效 — 静默忽略
   }
   
   try {

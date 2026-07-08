@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { graphsAPI, graphAPI } from '../api/index.js'
 import { useToast } from '../composables/useToast.js'
@@ -65,9 +65,9 @@ const closeNodeDetail = () => {
   currentDetailNode.value = null
 }
 
-// 获取节点关联的边列表
+// 获取节点关联的边列表(基于 edgeList computed,避免重复 O(n))
 const getNodeRelatedEdges = (nodeId) => {
-  return edges.value.filter(edge => {
+  return edgeList.value.filter(edge => {
     const sourceId = typeof edge.source === 'object' ? edge.source.id : edge.source
     const targetId = typeof edge.target === 'object' ? edge.target.id : edge.target
     return sourceId === nodeId || targetId === nodeId
@@ -240,11 +240,28 @@ const clearSearch = () => {
   loadNodes()
 }
 
-// 高亮搜索关键词
+// 高亮搜索关键词 - 返回分段数组,不拼接 HTML 字符串,避免 XSS
 const highlightKeyword = (text) => {
-  if (!searchKeyword.value.trim()) return text
-  const regex = new RegExp(`(${searchKeyword.value})`, 'gi')
-  return text.replace(regex, '<mark>$1</mark>')
+  if (!text) return [{ text: '', highlight: false }]
+  if (!searchKeyword.value.trim()) return [{ text: String(text), highlight: false }]
+  const segments = []
+  const kw = searchKeyword.value.trim()
+  // 使用 split + 正则保留分隔符,避免 replace 注入风险
+  const re = new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
+  let lastIndex = 0
+  let m
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > lastIndex) {
+      segments.push({ text: text.slice(lastIndex, m.index), highlight: false })
+    }
+    segments.push({ text: m[0], highlight: true })
+    lastIndex = m.index + m[0].length
+    if (m[0].length === 0) re.lastIndex++  // 防零宽匹配死循环
+  }
+  if (lastIndex < text.length) {
+    segments.push({ text: text.slice(lastIndex), highlight: false })
+  }
+  return segments
 }
 
 // ========== 格式化方法 ==========
@@ -375,21 +392,21 @@ const deleteNode = async (node) => {
 
 // ========== 边管理 ==========
 
-// 获取边列表（带节点标签）
-const getEdgeList = () => {
+// 边列表 (computed 缓存,O(n*m) 只在 nodes/edges 变化时重算一次)
+const edgeList = computed(() => {
   return edges.value.map(edge => {
     const sourceId = typeof edge.source === 'object' ? edge.source.id : edge.source
     const targetId = typeof edge.target === 'object' ? edge.target.id : edge.target
     const sourceNode = nodes.value.find(n => n.id === sourceId) || { label: sourceId }
     const targetNode = nodes.value.find(n => n.id === targetId) || { label: targetId }
-    
+
     return {
       ...edge,
       sourceLabel: sourceNode.label || sourceId,
       targetLabel: targetNode.label || targetId
     }
   })
-}
+})
 
 // 打开边详情
 const openEdgeDetail = (edge) => {
@@ -517,6 +534,9 @@ const getTypeTagStyle = (type) => {
 
 // ========== 生命周期 ==========
 
+// 跟踪 AbortController 用于取消进行中的 fetch
+let activeController = null
+
 onMounted(async () => {
   await loadGraphs()
   if (selectedGraphId.value) {
@@ -524,6 +544,13 @@ onMounted(async () => {
     await loadEdges()
   } else {
     loading.value = false
+  }
+})
+
+onUnmounted(() => {
+  // 取消所有进行中的请求
+  if (activeController) {
+    try { activeController.abort() } catch {}
   }
 })
 </script>
@@ -677,7 +704,12 @@ onMounted(async () => {
             <tbody>
               <tr v-for="node in nodes" :key="node.id">
                 <td class="cell-label">
-                  <span class="node-label" v-html="highlightKeyword(node.label)"></span>
+                  <span class="node-label">
+                    <template v-for="(seg, i) in highlightKeyword(node.label)" :key="i">
+                      <mark v-if="seg.highlight">{{ seg.text }}</mark>
+                      <span v-else>{{ seg.text }}</span>
+                    </template>
+                  </span>
                 </td>
                 <td>
                   <span class="type-badge" :style="getTypeTagStyle(node.type)">
@@ -877,7 +909,7 @@ onMounted(async () => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="edge in getEdgeList()" :key="edge.id">
+              <tr v-for="edge in edgeList" :key="edge.id">
                 <td class="cell-source">{{ edge.sourceLabel }}</td>
                 <td class="cell-edge-label">{{ edge.label }}</td>
                 <td class="cell-target">{{ edge.targetLabel }}</td>
@@ -887,7 +919,7 @@ onMounted(async () => {
                   <button class="btn-action danger" @click="deleteEdge(edge)">删除</button>
                 </td>
               </tr>
-              <tr v-if="getEdgeList().length === 0">
+              <tr v-if="edgeList.length === 0">
                 <td colspan="5" class="empty-row">
                   暂无边数据
                 </td>

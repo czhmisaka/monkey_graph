@@ -66,10 +66,25 @@ export async function initMCPClient(forceReconnect = false) {
       env,
       stdio: ['pipe', 'pipe', 'pipe']
     });
-    
+
+    // 设置 spawn 超时(10s 仍未启动则 SIGTERM,5s 后 SIGKILL)
+    const SPAWN_TIMEOUT_MS = 10 * 1000;
+    const spawnTimer = setTimeout(() => {
+      if (mcpProcess && mcpProcess.exitCode === null) {
+        logger.warn('【MCP】', `⏰ Spawn 超时 (${SPAWN_TIMEOUT_MS}ms),强制关闭进程`);
+        try { mcpProcess.kill('SIGTERM') } catch {}
+        setTimeout(() => {
+          if (mcpProcess && mcpProcess.exitCode === null) {
+            try { mcpProcess.kill('SIGKILL') } catch {}
+          }
+        }, 5000);
+      }
+    }, SPAWN_TIMEOUT_MS);
+
     let buffer = '';
-    
+
     mcpProcess.stdout.on('data', (data) => {
+      clearTimeout(spawnTimer);  // 收到任何输出视为启动成功
       buffer += data.toString();
       // 处理收到的消息
       const lines = buffer.split('\n');
@@ -99,6 +114,7 @@ export async function initMCPClient(forceReconnect = false) {
     });
     
     mcpProcess.on('close', (code) => {
+      clearTimeout(spawnTimer);
       logger.info('【MCP】', `🔴 进程退出: ${code}`);
       isConnected = false;
       handleDisconnect();

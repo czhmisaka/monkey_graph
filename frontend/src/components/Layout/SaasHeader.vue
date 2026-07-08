@@ -1,30 +1,25 @@
 <script setup>
 import { ref, onMounted, inject } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { authAPI, getToken, clearToken } from '../../api/index.js'
+import { authAPI, getCurrentUser, setCurrentUser } from '../../api/index.js'
 
 const router = useRouter()
 const route = useRoute()
 
 // 从 App.vue 获取全局认证状态
 const auth = inject('auth')
-const currentUser = ref(null)
+const currentUser = ref(getCurrentUser())
 
-// 检查登录状态
+// 检查登录状态 (cookie 自动随请求发送)
 const checkAuth = async () => {
-  const token = getToken()
-  if (token) {
-    try {
-      const res = await authAPI.getCurrentUser()
-      currentUser.value = res.user
-      // 同步到全局状态
-      if (auth?.currentUser) {
-        auth.currentUser.value = res.user
-      }
-    } catch (e) {
-      clearToken()
-      currentUser.value = null
+  try {
+    const res = await authAPI.getCurrentUser()
+    currentUser.value = res?.user || null
+    if (auth?.currentUser) {
+      auth.currentUser.value = res?.user || null
     }
+  } catch {
+    currentUser.value = null
   }
 }
 
@@ -33,11 +28,13 @@ onMounted(() => {
 })
 
 // 退出登录
-const logout = () => {
-  clearToken()
-  currentUser.value = null
-  if (auth?.currentUser) {
-    auth.currentUser.value = null
+const logout = async () => {
+  try {
+    await authAPI.logout()
+  } finally {
+    currentUser.value = null
+    setCurrentUser(null)
+    if (auth?.currentUser) auth.currentUser.value = null
   }
   router.push('/')
 }

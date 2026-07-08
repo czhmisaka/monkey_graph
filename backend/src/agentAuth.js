@@ -1,8 +1,11 @@
 /**
- * agentAuth.js - 向后兼容模块
+ * @deprecated 此模块已弃用,请直接 import './auth.js'
+ * 保留此文件仅为向后兼容;下一次大版本将删除
  *
- * 此模块已弃用，请优先使用 auth.js
- * 所有功能已迁移到统一的 auth.js 模块
+ * 直接 import 方式:
+ *   import { apiKeyAuth, jwtAuth, requirePermission } from './auth.js'
+ *   // 或者:
+ *   import { agentAuthMiddleware } from '../auth.js'  // 重命名为 apiKeyAuth
  */
 
 import {
@@ -17,10 +20,10 @@ import {
 
 // ============ 向后兼容别名 ============
 
-// Agent 认证中间件 (原 agentAuthMiddleware)
+// @deprecated 请使用 apiKeyAuth
 export const agentAuthMiddleware = apiKeyAuth;
 
-// 可选的 Agent 认证中间件 (原 optionalAgentAuth)
+// @deprecated 请使用 optionalAuth
 export const optionalAgentAuth = optionalAuth;
 
 export {

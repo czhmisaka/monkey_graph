@@ -1,8 +1,19 @@
 import express from 'express';
 import { authMiddleware } from '../auth.js';
-import { getLogFiles, readLogFile, getRecentLogs, clearLogs } from '../logger.js';
+import {
+  getLogFiles, readLogFile, getRecentLogs, clearLogs,
+  setLogLevel, getLogLevel
+} from '../logger.js';
 
 const router = express.Router();
+
+// 仅管理员可访问日志管理
+function adminOnly(req, res, next) {
+  if (req.user?.is_admin !== 1) {
+    return res.status(403).json({ error: '仅管理员可访问' });
+  }
+  next();
+}
 
 // ========== 日志查询 API（需要认证）==========
 
@@ -96,6 +107,27 @@ router.get('/logs/stream', authMiddleware, (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * 获取当前日志级别 (管理员)
+ * GET /api/logs/level
+ */
+router.get('/logs/level', authMiddleware, adminOnly, (req, res) => {
+  res.json({ success: true, level: getLogLevel() });
+});
+
+/**
+ * 设置日志级别 (管理员)
+ * POST /api/logs/level  body: { level: 'error'|'warn'|'info'|'debug' }
+ */
+router.post('/logs/level', authMiddleware, adminOnly, (req, res) => {
+  try {
+    setLogLevel(req.body.level);
+    res.json({ success: true, level: getLogLevel() });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
   }
 });
 

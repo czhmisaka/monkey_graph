@@ -337,19 +337,29 @@ const systemPrompt = `你是一个智能知识图谱助手（Agent模式），�
 当前图谱状态（使用 get_graph_info 工具获取完整信息）：`;
 
 // Agent 模式主函数 - 支持传入 graphId 和 signal (用于取消)
-export async function agentChat(messages, maxIterations = Infinity, sendEvent = null, graphId = null, signal = null) {
+// maxIterations 默认 10,硬上限 20;墙钟超时 5 分钟(防 DoS)
+export async function agentChat(messages, maxIterations = 10, sendEvent = null, graphId = null, signal = null) {
+  // 服务端硬上限:拒绝超过 20 的请求
+  const SAFE_MAX_ITERATIONS = 20;
+  const effectiveMaxIterations = Math.min(
+    Math.max(1, parseInt(maxIterations) || 10),
+    SAFE_MAX_ITERATIONS
+  );
+  const startTime = Date.now();
+  const WALL_CLOCK_TIMEOUT_MS = 5 * 60 * 1000;  // 5 分钟
+
   const p = '【Agent】';
-  
+
   // 获取图谱名称
   const graph = graphId ? graphOperations.getById(graphId) : null;
   const graphName = graph?.name || '未知图谱';
   const graphIdDisplay = graphId ? `${graphName}(${graphId.slice(0, 8)}...)` : '(未指定)';
-  
+
   // 任务开始日志（使用 debug 级别，生产环境可关闭）
   logger.debug(p, '╔═══════════════════════════════════════════════════════╗');
   logger.debug(p, '║  🚀 新任务开始                                        ║');
   logger.debug(p, '╚═══════════════════════════════════════════════════════╝');
-  
+
   // 检查是否已取消
   if (signal?.aborted) {
     logger.info(p, '⚠️ 任务已被取消');
@@ -362,18 +372,18 @@ export async function agentChat(messages, maxIterations = Infinity, sendEvent = 
       cancelled: true
     };
   }
-  
+
   const userMsg = messages.find(m => m.role === 'user');
   logger.info(p, `📝 用户需求: ${userMsg?.content || '(无内容)'}`);
   logger.info(p, `📋 操作图谱: ${graphName} (ID: ${graphId || '未指定'})`);
-  logger.debug(p, `⚙️  最大迭代次数: 无限制`);
+  logger.debug(p, `⚙️  最大迭代次数: ${effectiveMaxIterations} (墙钟超时: 5 分钟)`);
   logger.debug(p, '');
-  
+
   // 流式推送开始
   if (sendEvent) {
     sendEvent({ type: 'start', message: userMsg?.content || '' });
   }
-  
+
   // 初始化 MCP 客户端（如果尚未连接）
   if (!isMCPConnected()) {
     try {
@@ -382,16 +392,16 @@ export async function agentChat(messages, maxIterations = Infinity, sendEvent = 
       logger.warn('【MCP】', `⚠️ MCP 连接失败，将无法使用 web_search 等工具: ${error.message}`);
     }
   }
-  
+
   // 请求级创建 OpenAI 客户端
   const openai = createOpenAIClient();
-  
+
   if (!openai) {
     throw new Error('LLM 服务未初始化，请先配置 API Key');
   }
 
   // 根据 graphId 获取对应图谱数据
-  const nodes = graphId 
+  const nodes = graphId
     ? nodeOperations.getByGraphId(graphId).map(n => ({ ...n, properties: JSON.parse(n.properties || '{}') }))
     : nodeOperations.getAll().map(n => ({ ...n, properties: JSON.parse(n.properties || '{}') }));
   const edges = graphId
@@ -400,23 +410,34 @@ export async function agentChat(messages, maxIterations = Infinity, sendEvent = 
 
   const graphInfo = `节点数量: ${nodes.length}, 边数量: ${edges.length}`;
   const userMessages = messages.filter(m => m.role === 'user');
-  
+
   let conversationHistory = [
     { role: 'user', content: systemPrompt + graphInfo }
   ];
-  
+
   if (userMessages.length > 0) {
     conversationHistory.push(userMessages[0]);
   }
-  
+
   const executionTrace = [];
   let iteration = 0;
   let finalMessage = null;
   let taskCompleted = false;
 
-  while (iteration < maxIterations) {
+  while (iteration < effectiveMaxIterations) {
+    // 墙钟超时检查
+    if (Date.now() - startTime > WALL_CLOCK_TIMEOUT_MS) {
+      logger.warn(p, `⏰ 墙钟超时 (${WALL_CLOCK_TIMEOUT_MS}ms),强制终止`);
+      finalMessage = (finalMessage || '') + '\n\n[系统提示] 任务执行超过 5 分钟,已强制终止。';
+      break;
+    }
+    if (signal?.aborted) {
+      logger.info(p, '⚠️ 任务已被取消');
+      break;
+    }
+
     iteration++;
-    
+
     logger.debug(p, `╔═══════════════════════════════════════════════════════╗`);
     logger.debug(p, `║  🔄 第 ${iteration} 轮迭代                                     ║`);
     logger.debug(p, `╚═══════════════════════════════════════════════════════╝`);
@@ -637,7 +658,7 @@ export async function agentChat(messages, maxIterations = Infinity, sendEvent = 
   const finalEdges = graphId ? edgeOperations.getByGraphId(graphId).length : edgeOperations.getAll().length;
   
   logger.debug(p, '');
-  const iterDisplay = maxIterations === Infinity ? '无限制' : maxIterations;
+  const iterDisplay = effectiveMaxIterations;
   logger.info(p, `╔═══════════════════════════════════════════════════════╗`);
   logger.info(p, `║  🏁 任务结束                                        ║`);
   logger.info(p, `╚═══════════════════════════════════════════════════════╝`);
@@ -660,7 +681,7 @@ export async function agentChat(messages, maxIterations = Infinity, sendEvent = 
 }
 
 export async function chat(messages) {
-  return agentChat(messages, Infinity);
+  return agentChat(messages, 10);  // 默认 10 轮,可被调用方覆盖
 }
 
 export async function chatSync(userMessage) {

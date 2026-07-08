@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { authMiddleware } from '../auth.js';
+import { uploadRateLimiter } from '../middleware/rateLimit.js';
 import { FileParser } from '../utils/fileParser.js';
 import { TextProcessor } from '../services/textProcessor.js';
 import { OntologyGenerator } from '../services/ontologyGenerator.js';
@@ -25,7 +26,7 @@ const router = express.Router();
  * - project_name: String (可选) - 项目名称
  * - additional_context: String (可选) - 额外说明上下文
  */
-router.post('/graph/ontology/generate', authMiddleware, upload.array('files', 10), async (req, res) => {
+router.post('/graph/ontology/generate', authMiddleware, uploadRateLimiter, upload.array('files', 10), async (req, res) => {
   // 设置 SSE 响应头
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');

@@ -232,8 +232,8 @@ prepare_data_dirs() {
     # 方案1: 直接设置 1001 权限（适用于已存在的目录）
     chown -R 1001:1001 "$SCRIPT_DIR/data" 2>/dev/null || true
     chown -R 1001:1001 "$SCRIPT_DIR/logs" 2>/dev/null || true
-    chmod -R 755 "$SCRIPT_DIR/data"
-    chmod -R 755 "$SCRIPT_DIR/logs"
+    chmod 750 "$SCRIPT_DIR/data"
+    chmod 750 "$SCRIPT_DIR/logs"
     
     # 如果上面失败，尝试递归设置（适用于新创建的目录）
     if [ "$(stat -c '%u' "$SCRIPT_DIR/data" 2>/dev/null)" != "1001" ]; then

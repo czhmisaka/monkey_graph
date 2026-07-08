@@ -18,6 +18,12 @@
 
 import db from '../database.js';
 
+// 复用 database.js 中已有的 LIKE 转义
+function escapeLikePattern(str) {
+  if (!str) return '';
+  return String(str).replace(/[%_\\]/g, '\\$&');
+}
+
 // ========== 常量定义 ==========
 
 /**
@@ -270,15 +276,15 @@ export class QueryParser {
         return `${sqlField} <= ?`;
 
       case 'contains':
-        params.push(`%${value}%`);
+        params.push(`%${escapeLikePattern(value)}%`);
         return `${sqlField} LIKE ?`;
 
       case 'startsWith':
-        params.push(`${value}%`);
+        params.push(`${escapeLikePattern(value)}%`);
         return `${sqlField} LIKE ?`;
 
       case 'endsWith':
-        params.push(`%${value}`);
+        params.push(`%${escapeLikePattern(value)}`);
         return `${sqlField} LIKE ?`;
 
       case 'exists':

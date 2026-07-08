@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { tenantAPI, usageAPI, plansAPI, myAgentAPI } from '../api/index.js'
+import api, { tenantAPI, usageAPI, plansAPI, myAgentAPI } from '../api/index.js'
 import SaasHeader from '../components/Layout/SaasHeader.vue'
 
 const router = useRouter()
@@ -72,14 +72,8 @@ const availableAgents = ref([])  // 可用的 Agent 列表
 // 获取所有图谱的授权信息
 const loadAllGraphsAuth = async () => {
   try {
-    const token = localStorage.getItem('monkeygraph_token')
-    const headers = { 
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    }
-    
     // 获取用户的所有图谱
-    const graphsRes = await fetch('/api/graphs', { headers })
+    const graphsRes = await fetch('/api/graphs', { credentials: 'include' })
     if (!graphsRes.ok) {
       console.error('获取图谱失败:', graphsRes.status)
       return
@@ -96,30 +90,15 @@ const loadAllGraphsAuth = async () => {
       console.log('Agent 数据:', availableAgents.value)
     }
     
-    // 获取每个图谱的授权信息
-    const authPromises = graphsData.map(async (graph) => {
-      try {
-        const authRes = await fetch(`/api/graphs/${graph.id}/agents`, { headers })
-        if (!authRes.ok) {
-          console.error(`获取图谱 ${graph.id} 授权失败:`, authRes.status)
-          return { graph, authorizations: [] }
-        }
-        const authData = await authRes.json()
-        console.log(`图谱 ${graph.id} 授权数据:`, authData)
-        return {
-          graph,
-          authorizations: authData || []
-        }
-      } catch (e) {
-        console.error(`获取图谱 ${graph.id} 授权异常:`, e)
-        return {
-          graph,
-          authorizations: []
-        }
-      }
-    })
-    
-    graphAuthList.value = await Promise.all(authPromises)
+    // 批量获取每个图谱的授权信息(单次请求,替代 N+1)
+    const authMap = graphsData.length > 0
+      ? await api.post('/graphs/agents/batch', { graphIds: graphsData.map(g => g.id) })
+      : {}
+
+    graphAuthList.value = graphsData.map(graph => ({
+      graph,
+      authorizations: authMap[graph.id] || []
+    }))
     console.log('最终授权列表:', graphAuthList.value)
   } catch (e) {
     console.error('加载图谱授权信息失败:', e)
@@ -146,10 +125,8 @@ const authorizeAgent = async (graphId, agentId, permission = 'read') => {
   try {
     const res = await fetch(`/api/graphs/${graphId}/agents`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('monkeygraph_token')}`,
-        'Content-Type': 'application/json'
-      },
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ agent_id: agentId, permission })
     })
     const data = await res.json()
@@ -173,7 +150,7 @@ const revokeAgentAuth = async (graphId, agentId) => {
   try {
     const res = await fetch(`/api/graphs/${graphId}/agents/${agentId}`, {
       method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('monkeygraph_token')}` }
+      credentials: 'include'
     })
     const data = await res.json()
     if (!res.ok) {
@@ -195,10 +172,8 @@ const updateAgentPermission = async (graphId, agentId, permission) => {
   try {
     const res = await fetch(`/api/graphs/${graphId}/agents/${agentId}`, {
       method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('monkeygraph_token')}`,
-        'Content-Type': 'application/json'
-      },
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ permission })
     })
     const data = await res.json()
@@ -217,11 +192,6 @@ const updateAgentPermission = async (graphId, agentId, permission) => {
 // 获取图谱授权统计
 const loadGraphAuthStats = async () => {
   try {
-    const token = localStorage.getItem('monkeygraph_token')
-    const headers = {
-      'Authorization': `Bearer ${token}`
-    }
-    
     // 获取用户的所有图谱
     const graphsRes = await fetch('/api/graphs', { headers })
     const graphs = graphsRes.ok ? await graphsRes.json() : []

@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { graphOperations, edgeOperations, historyOperations, nodeOperations } from '../database.js';
 import { authMiddleware } from '../auth.js';
 import { logger, auditLogger } from '../logger.js';
+import { assertGraphAccess } from './_helpers.js';
 
 const router = express.Router();
 
@@ -12,26 +13,9 @@ const router = express.Router();
 router.get('/graphs/:graphId/edges', authMiddleware, (req, res) => {
   try {
     const { graphId } = req.params;
-    
-    // 验证图谱权限（支持用户图谱、Agent 创建的图谱、管理员访问）
-    let graph = graphOperations.getByIdAndUserId(graphId, req.user.id);
-    const isAdmin = req.user.username === 'admin' || req.user.is_admin === 1;
-    
-    if (!graph && !isAdmin) {
-      const anyGraph = graphOperations.getById(graphId);
-      if (anyGraph && anyGraph.user_id && anyGraph.user_id.startsWith('agent-')) {
-        graph = anyGraph;
-      }
-    }
-    
-    if (!graph && isAdmin) {
-      graph = graphOperations.getById(graphId);
-    }
-    
-    if (!graph) {
-      return res.status(404).json({ error: '图谱不存在' });
-    }
-    
+    const graph = assertGraphAccess(req, res, graphId);
+    if (!graph) return;
+
     const edges = edgeOperations.getByGraphId(graphId).map(e => ({
       ...e,
       properties: JSON.parse(e.properties || '{}')
@@ -52,11 +36,8 @@ router.post('/graphs/:graphId/edges', authMiddleware, (req, res) => {
       return res.status(400).json({ error: '源节点和目标节点不能为空' });
     }
 
-    // 验证图谱是否属于当前用户
-    const graph = graphOperations.getByIdAndUserId(graphId, req.user.id);
-    if (!graph) {
-      return res.status(404).json({ error: '图谱不存在' });
-    }
+    const graph = assertGraphAccess(req, res, graphId);
+    if (!graph) return;
 
     // 检查节点是否属于该图谱
     const sourceNode = nodeOperations.getById(source);
@@ -91,12 +72,8 @@ router.post('/graphs/:graphId/edges', authMiddleware, (req, res) => {
 router.put('/graphs/:graphId/edges/:id', authMiddleware, (req, res) => {
   try {
     const { graphId, id } = req.params;
-    // 验证图谱是否属于当前用户
-    const graph = graphOperations.getByIdAndUserId(graphId, req.user.id);
-    if (!graph) {
-      return res.status(404).json({ error: '图谱不存在' });
-    }
-    // 验证边是否属于该图谱
+    const graph = assertGraphAccess(req, res, graphId);
+    if (!graph) return;
     const oldEdge = edgeOperations.getById(id);
     if (!oldEdge || oldEdge.graph_id !== graphId) {
       return res.status(404).json({ error: '边不存在' });
@@ -120,12 +97,8 @@ router.put('/graphs/:graphId/edges/:id', authMiddleware, (req, res) => {
 router.delete('/graphs/:graphId/edges/:id', authMiddleware, (req, res) => {
   try {
     const { graphId, id } = req.params;
-    // 验证图谱是否属于当前用户
-    const graph = graphOperations.getByIdAndUserId(graphId, req.user.id);
-    if (!graph) {
-      return res.status(404).json({ error: '图谱不存在' });
-    }
-    // 验证边是否属于该图谱
+    const graph = assertGraphAccess(req, res, graphId);
+    if (!graph) return;
     const oldEdge = edgeOperations.getById(id);
     if (!oldEdge || oldEdge.graph_id !== graphId) {
       return res.status(404).json({ error: '边不存在' });

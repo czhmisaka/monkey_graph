@@ -28,60 +28,38 @@ const isProduction = process.env.NODE_ENV === 'production';
 const frontendDistPath = path.join(__dirname, '..', 'frontend', 'dist');
 const frontendDevPort = process.env.FRONTEND_DEV_PORT || '13002';
 
-// 创建默认管理员账户（仅在非生产环境且配置了环境变量时创建）
+// 创建默认管理员账户（强制要求配置环境变量；缺失时启动失败）
 function createDefaultAdmin() {
-  // 生产环境不自动创建默认管理员
-  if (isProduction) {
-    const adminUsername = process.env.ADMIN_USERNAME;
-    const adminPassword = process.env.ADMIN_PASSWORD;
-    
-    if (!adminUsername || !adminPassword) {
-      console.log('⚠️ 生产环境警告: 未配置管理员账户 (ADMIN_USERNAME, ADMIN_PASSWORD)');
-      return;
-    }
-    
-    try {
-      const existingAdmin = db.prepare('SELECT id FROM users WHERE username = ?').get(adminUsername);
-      if (!existingAdmin) {
-        const adminId = crypto.randomUUID();
-        const hashedPassword = bcrypt.hashSync(adminPassword, 10);
-        db.prepare(`
-          INSERT INTO users (id, username, password, is_admin)
-          VALUES (?, ?, ?, ?)
-        `).run(adminId, adminUsername, hashedPassword, 1);
-        console.log(`✅ 生产环境管理员账户已创建: ${adminUsername}`);
-      }
-    } catch (error) {
-      console.error('创建管理员账户失败:', error.message);
-    }
-    return;
+  const adminUsername = process.env.ADMIN_USERNAME || 'admin';
+  const adminPassword = process.env.ADMIN_PASSWORD;
+
+  if (!adminPassword || adminPassword.length < 12) {
+    throw new Error(
+      '[FATAL] 必须配置 ADMIN_PASSWORD (>=12 字符)。' +
+      '出于安全考虑,缺失或弱密码将阻止服务启动。' +
+      '请在 backend/.env 中设置 ADMIN_PASSWORD 后重启。'
+    );
   }
-  
-  // 开发环境检查是否已存在 admin 用户
+
   try {
-    const existingAdmin = db.prepare('SELECT id FROM users WHERE username = ?').get('admin');
-    
+    const existingAdmin = db.prepare('SELECT id FROM users WHERE username = ?').get(adminUsername);
+
     if (!existingAdmin) {
-      // 开发环境可以配置自定义管理员，也使用环境变量
-      const adminUsername = process.env.ADMIN_USERNAME || 'admin';
-      const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
-      
       const adminId = crypto.randomUUID();
-      const hashedPassword = bcrypt.hashSync(adminPassword, 10);
-      
+      const hashedPassword = bcrypt.hashSync(adminPassword, parseInt(process.env.BCRYPT_ROUNDS) || 12);
+
       db.prepare(`
         INSERT INTO users (id, username, password, is_admin)
         VALUES (?, ?, ?, ?)
       `).run(adminId, adminUsername, hashedPassword, 1);
-      
-      if (process.env.ADMIN_USERNAME) {
-        console.log(`✅ 开发环境管理员账户已创建: ${adminUsername}`);
-      } else {
-        console.log('⚠️ 开发环境默认管理员已创建 (admin/admin123) - 建议通过 ADMIN_USERNAME/ADMIN_PASSWORD 环境变量配置');
-      }
+
+      console.log(`✅ 管理员账户已创建: ${adminUsername}`);
+    } else {
+      console.log(`✅ 管理员账户已存在: ${adminUsername}`);
     }
   } catch (error) {
-    console.error('创建默认管理员账户失败:', error.message);
+    console.error('创建管理员账户失败:', error.message);
+    throw error;
   }
 }
 
@@ -148,6 +126,54 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.use(express.json());
+
+// Cookie 解析中间件 (无需 cookie-parser 依赖)
+// 仅解析 mg_token;格式: k1=v1; k2=v2
+app.use((req, res, next) => {
+  req.cookies = {};
+  const cookieHeader = req.headers.cookie;
+  if (!cookieHeader) return next();
+  for (const pair of cookieHeader.split(';')) {
+    const idx = pair.indexOf('=');
+    if (idx === -1) continue;
+    const k = pair.slice(0, idx).trim();
+    const v = pair.slice(idx + 1).trim();
+    if (k) req.cookies[k] = decodeURIComponent(v);
+  }
+  next();
+});
+
+// CSRF 简化保护: 对所有非 GET/HEAD/OPTIONS 请求校验 Origin/Referer
+// 在 sameSite=lax cookie 的基础上再加一层防御
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+app.use((req, res, next) => {
+  if (SAFE_METHODS.has(req.method)) return next();
+  const origin = req.headers.origin || req.headers.referer;
+  if (!origin) {
+    // 同源表单提交或无 origin 的客户端(curl) - 放行
+    // 因为 cookie 已 sameSite=lax,跨站表单无法携带 cookie
+    return next();
+  }
+  try {
+    const url = new URL(origin);
+    const allowed = (process.env.ALLOWED_ORIGINS || [
+      'http://localhost:13001',
+      'http://localhost:13002',
+      'http://localhost:5173',
+      'http://127.0.0.1:13001',
+      'http://127.0.0.1:13002',
+      'http://127.0.0.1:5173'
+    ].join(','));
+    const allowedHosts = allowed.split(',').map(s => s.trim());
+    if (allowedHosts.includes(`${url.protocol}//${url.host}`)) {
+      return next();
+    }
+    console.warn(`[CSRF] 拒绝来源: ${origin}`);
+    return res.status(403).json({ error: '跨站请求被拒绝 (CSRF)' });
+  } catch {
+    return next();  // 无法解析 origin 时放行(交给 sameSite 防御)
+  }
+});
 
 // 路由
 app.use('/api', routes);
@@ -247,14 +273,47 @@ if (!isProduction) {
   });
 }
 
-// 健康检查端点
-app.get('/health', (req, res) => {
-  res.json({
+// 健康检查端点 - 增强:实际探测各依赖
+app.get('/health', async (req, res) => {
+  const status = {
     status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    version: '1.0.0'
-  });
+    version: '1.0.0',
+    checks: {}
+  };
+
+  // 1. 数据库探活
+  try {
+    const dbState = db.prepare('SELECT 1 as ok').get();
+    status.checks.database = dbState?.ok === 1 ? 'ok' : 'fail';
+  } catch (e) {
+    status.checks.database = 'fail: ' + e.message;
+    status.status = 'degraded';
+  }
+
+  // 2. LLM 配置(API Key 是否存在)
+  status.checks.llm_configured = !!process.env.LLM_CLOUD_API_KEY;
+
+  // 3. MCP 状态
+  try {
+    const { isMCPConnected, isMCPDegraded } = await import('./mcpClient.js');
+    status.checks.mcp = {
+      connected: isMCPConnected(),
+      degraded: isMCPDegraded()
+    };
+  } catch (e) {
+    status.checks.mcp = 'unavailable';
+  }
+
+  // 4. 关键环境变量
+  status.checks.env = {
+    JWT_SECRET: !!process.env.JWT_SECRET,
+    ENCRYPTION_KEY: !!process.env.ENCRYPTION_KEY,
+    ADMIN_PASSWORD: !!process.env.ADMIN_PASSWORD
+  };
+
+  res.json(status);
 });
 
 // 启动服务器

@@ -6,6 +6,66 @@ const router = express.Router();
 
 // ========== 图谱 Agent 授权管理（需要认证）==========
 
+// 批量获取多个图谱的授权(单次请求替代 N+1)
+// POST /api/graphs/agents/batch  body: { graphIds: [...] }
+router.post('/graphs/agents/batch', authMiddleware, (req, res) => {
+  try {
+    const { graphIds } = req.body || {};
+    if (!Array.isArray(graphIds) || graphIds.length === 0) {
+      return res.status(400).json({ error: 'graphIds 必须是非空数组' });
+    }
+    if (graphIds.length > 100) {
+      return res.status(400).json({ error: '一次最多查询 100 个图谱' });
+    }
+
+    // 权限校验: 过滤出当前用户可访问的图谱(拥有者 / 管理员)
+    const accessible = [];
+    for (const id of graphIds) {
+      const graph = graphOperations.getById(id);
+      if (!graph) continue;
+      const isOwner = graph.user_id === req.user.id;
+      const isAgentGraph = typeof graph.user_id === 'string' && graph.user_id.startsWith('agent-');
+      const isAdmin = req.user.is_admin === 1;
+      if (isOwner || isAgentGraph || isAdmin) {
+        accessible.push(id);
+      }
+    }
+
+    if (accessible.length === 0) {
+      return res.json({});  // 空对象
+    }
+
+    // 单次 SQL 查所有授权
+    const rows = graphAgentPermissionOperations.getByGraphIds(accessible);
+
+    // 按 graphId 分组
+    const result = {};
+    for (const id of accessible) result[id] = [];
+    for (const p of rows) {
+      if (!result[p.graph_id]) result[p.graph_id] = [];
+      result[p.graph_id].push({
+        id: p.id,
+        graph_id: p.graph_id,
+        agent_id: p.agent_id,
+        permission: p.permission,
+        created_by: p.created_by,
+        created_at: p.created_at,
+        updated_at: p.updated_at,
+        agent: {
+          id: p.agent_id,
+          name: p.agent_name,
+          description: p.agent_description,
+          is_active: p.agent_is_active
+        }
+      });
+    }
+
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 获取图谱已授权的 Agent 列表
 router.get('/graphs/:id/agents', authMiddleware, (req, res) => {
   try {
