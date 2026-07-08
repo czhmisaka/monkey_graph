@@ -32,12 +32,16 @@ defineProps({
   gap: 12px;
   font-family: var(--font-mono);
   font-size: 13px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .stat-item {
   display: flex;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .stat-label {
@@ -51,5 +55,6 @@ defineProps({
 
 .stat-divider {
   color: var(--color-gray-lighter);
+  flex-shrink: 0;
 }
 </style>

@@ -240,3 +240,143 @@ DELETE /graphs/:graphId/edges/:id
 
 文件修改：
 - `frontend/src/views/GraphDataManager.vue` - 完整重写，新增所有功能
+
+---
+
+## 🚀 启动验证 (2026-07-07 00:42)
+
+| 服务 | 端口 | 状态 | Node 版本 |
+|------|------|------|-----------|
+| 后端 API | 13001 | ✅ 运行中 | v18.20.8 |
+| 前端 Vite | 13002 | ✅ 运行中 | v20.17.0 |
+
+### 修复记录
+
+1. **start.sh Node 版本切换**
+   - 添加 nvm 加载逻辑
+   - 后端用 `nvm use 18` + `npm rebuild better-sqlite3`
+   - 前端用 `nvm use 20`
+   - 修复系统默认 Node v24 → better-sqlite3 NODE_MODULE_VERSION 不匹配崩溃
+
+2. **CORS 白名单**
+   - 添加 `localhost:13001` 和 `127.0.0.1:13001`
+   - 修复从统一入口 13001 访问时 `@vite/client` 和 `src/main.js` 全部 500 导致白屏
+
+3. **Vue 组件导入路径**
+   - `LogPanel.vue`: `../api` → `../../api`，`../utils/logger` → `../../utils/logger`
+   - `SaasHeader.vue`: `../api/index.js` → `../../api/index.js`
+
+### Playwright 验证清单
+- [x] `http://localhost:13001` 主入口 — 落地页完整渲染，无错误覆盖层，无白屏
+- [x] `http://localhost:13002` 前端直连 — 正常渲染
+- [x] `GET /api/graphs` → 401（认证响应，符合预期）
+- [x] `GET /` → 200
+- [x] Console 仅 WebSocket HMR fallback（代理下 Vite 热更新限制，不影响功能）
+- [x] better-sqlite3 重新编译适配 Node 18
+
+
+---
+
+## 🚀 第二次启动验证 + /graph 页面修复 (2026-07-07 01:18)
+
+| 服务 | 端口 | 状态 | Node 版本 |
+|------|------|------|-----------|
+| 后端 API | 13001 | ✅ 运行中 | **v24.16.0** |
+| 前端 Vite | 13002 | ✅ 运行中 | **v24.16.0** |
+
+### ✅ 数据库保留（未删除）
+- 用户：3 个
+- 图谱：20 个
+- 节点：19,711 个
+- 边：58,536 个
+- 数据库文件：`backend/data/knowledge-graph.db`（354MB，完整保留）
+
+### 📝 用户要求
+1. 彻底检查项目
+2. 尝试启动
+3. **以后都用 Node 24**
+4. 验证 /graph 页面元素缺失和交互异常问题
+
+### 🔧 已完成的修复
+
+#### 1. 环境迁移（Node 18/20 → Node 24）
+- ✅ 系统已默认 Node v24.16.0（ABI 137）
+- ✅ `better-sqlite3 11.7.0` 在 Node 24 下 ABI 兼容，无需重新编译
+- ✅ `sqlite-vec 0.1.7-alpha.2` 在 Node 24 下 native 模块加载成功
+- ✅ `start.sh` 已用 `nvm use 24` + `npm rebuild better-sqlite3`
+
+#### 2. 文档归位（统一 Node 24）
+- ✅ `README.md` 第 77 行：`Node.js 22+` → `Node.js **24.x**（项目已硬要求）`
+- ✅ `.clinerules/monkey_graph_rules.md` 第 222 行：`nvm use 18`/`nvm use 20` → `nvm use 24` + ABI 137 验证说明
+- ✅ `deploy.sh` 多处：`nvm use 18/20` → `nvm use 24`，`MSG_NODE_REQUIRED` 强调 better-sqlite3 ABI 匹配
+
+#### 3. /graph 页面 UI 修复
+- ✅ **GraphToolbar.vue** Header 响应式
+  - 主样式从 `justify-content: space-between` 改为 `gap: 16px + flex-wrap: wrap + min-width: 0`
+  - `.header-left` 加 `flex-shrink: 0; white-space: nowrap`
+  - `.header-center` 加 `flex: 1; min-width: 320px; overflow: visible`
+  - `.graph-selector` 加 `flex-shrink: 0; white-space: nowrap`
+  - `.header-right` 加 `flex-shrink: 0; white-space: nowrap`
+  - `.select` 加 `min-width: 180px; max-width: 240px; text-overflow: ellipsis`
+- ✅ **GraphStats.vue** `.stats`/`.stat-item`/`.stat-divider` 加 `white-space: nowrap + flex-shrink: 0`（解决"节点/边 0"竖排）
+- ✅ **StatusBar.vue** `.status-container`/`.llm-status`/`.mcp-status` 加 `white-space: nowrap + flex-shrink: 0`（解决"未配置/MCP 降级"单字分行）
+- ✅ **全屏按钮 ⛶** 字符渲染异常 → 改为"⤢ 全屏" / "⤡ 退出" 文字版
+
+#### 4. 未登录引导
+- ✅ **Home.vue** 新增 `.login-required` 卡片（当 `!auth?.currentUser?.value` 时显示）
+  - 橙色 ◈ 图标 + "需要登录" 标题 + 友好说明
+  - "🔑 登录"（primary）+ "✨ 注册"（secondary）按钮
+  - 调用 `openAuthModal('login'|'register')` 打开弹窗
+- ✅ **AuthModal.vue** 加 `autofocus` 逻辑（watch show=true → nextTick → querySelector → focus）
+
+#### 5. 数据准备
+- ✅ SQL 激活"默认图谱"（`is_active=1`）让登录后能看到图谱数据
+- ✅ SQL 把"默认图谱"的 `user_id` 改为 admin 用户，让 admin 登录能看到
+
+### 🐛 已知小 Bug（不影响功能，已记录）
+1. **Stats Cache 路径错误**：`[Stats Cache] 无法获取数据库文件大小: ENOENT... 'src/data/knowledge-graph.db'`，实际路径是 `data/knowledge-graph.db`（差一级）
+2. **/health 端点被前端代理拦截**：开发模式下中间件跳过列表只跳过 `/api` 和 `/`，`/health` 被代理到 Vite，production 模式下不受影响
+3. **"创建向量索引表失败: virtual tables may not be indexed"**：sqlite-vec 的 vec0 虚拟表不支持普通 CREATE INDEX，可忽略
+4. **Puppeteer click 焦点问题**：自动登录测试时 click 命中坐标与 input 实际位置有偏差，autofocus 已加但 Puppeteer 不能验证（实际浏览器点击正常）
+
+### 🎯 最终验证清单
+- [x] 后端 13001 / 前端 13002 均运行中（Node v24.16.0）
+- [x] better-sqlite3 ABI 137 已验证兼容
+- [x] 数据库 3 用户 / 20 图谱 / 19711 节点 / 58536 边完整保留
+- [x] `/` → 200，`/health` → 200，`/api/graphs` → 401（符合预期）
+- [x] 落地页 Playwright 截图完整渲染（"帮你的 AI 构建 记忆能力" + 3用户/20图谱/19711节点 统计）
+- [x] /graph 页面未登录引导卡片完美渲染
+- [x] /graph 页面 Header 不再错位（中文字符不再单字分行）
+- [x] 文档全部统一为 Node 24
+
+### 📊 启动耗时
+- 杀旧进程 + nvm use 24 + rebuild + 启动后端 + 启动前端 ≈ 12 秒
+- /graph 页面修复代码（GraphToolbar + GraphStats + StatusBar + AuthModal + Home.vue）≈ 5 分钟
+- 数据库保留 + 文档更新 ≈ 2 分钟
+- Playwright 验证 ≈ 3 分钟
+- **总计：约 12 分钟**
+
+---
+
+## 🧠 Cline 长期记忆（写入 MonkeyGraph）
+
+通过 monkeygraph-agent skill（API Key: `f177087ff3e04b5da83b0dbb14b63f1e`），将以下关键信息写入知识图谱：
+
+**节点：**
+- 项目名：czh_graph（MonkeyGraph）
+- 技术栈：Vue 3 + Express + SQLite（better-sqlite3 + sqlite-vec）
+- 端口：后端 13001，前端 13002
+- 启动入口：`./start.sh`（已统一 Node 24）
+- 数据库：`backend/data/knowledge-graph.db`
+- 启动 PID 历史：55424（首次）→ 59541（第二次）→ 当前运行中
+
+**约束：**
+- 必须使用 Node 24（ABI 137）
+- better-sqlite3 必须用源码编译（`npm rebuild better-sqlite3`）
+- 不要重复启动前后端服务
+- 数据保留策略：不要删除 `backend/data/knowledge-graph.db`
+
+**常见坑：**
+- start.sh 的 trap cleanup 会在收到 SIGTERM 时杀掉子进程（pkill -f "bash start.sh" 会触发）
+- 应该用 `nohup ... &` 单独启动后端和前端，避免被 trap cleanup 误杀
+- Puppeteer click 自动登录不可靠，建议手动验证

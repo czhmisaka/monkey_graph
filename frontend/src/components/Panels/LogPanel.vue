@@ -112,8 +112,8 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { logsAPI } from '../api'
-import logger from '../utils/logger'
+import { logsAPI } from '../../api'
+import logger from '../../utils/logger'
 
 const emit = defineEmits(['close'])
 

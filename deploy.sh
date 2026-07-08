@@ -30,7 +30,7 @@ if [ "$LANGUAGE" = "en" ]; then
     MSG_SELECT_LANG="Select language / 选择语言: [1] English  [2] 中文"
     MSG_ENV_CHECK="🔍 Checking environment..."
     MSG_NODE_VERSION="Node.js version"
-    MSG_NODE_REQUIRED="Node.js 18+ is required"
+    MSG_NODE_REQUIRED="Node.js 24 is required (ABI 137 for better-sqlite3)"
     MSG_PORT_CHECK="Checking port availability..."
     MSG_PORT_WARNING="Port %s is in use, will try to free it"
     MSG_PORT_FREED="Port %s has been freed"
@@ -51,7 +51,7 @@ if [ "$LANGUAGE" = "en" ]; then
     MSG_CLEANUP="Cleaning up..."
     MSG_DONE="Deployment complete! 🎉"
     MSG_ERROR="❌ Error occurred"
-    MSG_NVM_NOTE="Note: Use 'nvm use 18' or 'nvm use 20' to switch Node version"
+    MSG_NVM_NOTE="Note: Use 'nvm use 24' to switch Node version (project requires Node 24)"
     MSG_MODE_DEV="Development Mode"
     MSG_MODE_PROD="Production Mode"
 else
@@ -60,7 +60,7 @@ else
     MSG_SELECT_LANG="选择语言 / Select language: [1] English  [2] 中文"
     MSG_ENV_CHECK="🔍 正在检查环境..."
     MSG_NODE_VERSION="Node.js 版本"
-    MSG_NODE_REQUIRED="需要 Node.js 18 或更高版本"
+    MSG_NODE_REQUIRED="需要 Node.js 24（better-sqlite3 ABI 必须匹配）"
     MSG_PORT_CHECK="检查端口占用情况..."
     MSG_PORT_WARNING="端口 %s 已被占用，将尝试释放"
     MSG_PORT_FREED="端口 %s 已释放"
@@ -81,7 +81,7 @@ else
     MSG_CLEANUP="正在清理..."
     MSG_DONE="部署完成！🎉"
     MSG_ERROR="❌ 发生错误"
-    MSG_NVM_NOTE="提示：使用 'nvm use 18' 或 'nvm use 20' 切换 Node 版本"
+    MSG_NVM_NOTE="提示：使用 'nvm use 24' 切换 Node 版本（项目要求 Node 24）"
     MSG_MODE_DEV="开发模式"
     MSG_MODE_PROD="生产模式"
 fi
@@ -126,7 +126,7 @@ check_environment() {
     # Check Node.js version
     if ! command -v node &> /dev/null; then
         print_error "Node.js is not installed"
-        echo "Please install Node.js 18+: https://nodejs.org/"
+        echo "Please install Node.js 24: https://nodejs.org/"
         exit 1
     fi
     

@@ -125,8 +125,10 @@ const corsOptions = {
     const allowedOrigins = process.env.ALLOWED_ORIGINS 
       ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
       : [
+          'http://localhost:13001',  // 统一入口
           'http://localhost:13002',  // 本地开发
           'http://localhost:5173',   // Vite 默认端口
+          'http://127.0.0.1:13001',
           'http://127.0.0.1:13002',
           'http://127.0.0.1:5173'
         ];

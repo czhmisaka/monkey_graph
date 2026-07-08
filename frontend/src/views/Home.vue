@@ -10,6 +10,7 @@
       :llmConfigured="llmConfigured"
       :mcpStatus="mcpStatus"
       :exportLoading="exportLoading"
+      @switch-graph="handleSwitchGraph"
       @open-share="openShareModal"
       @open-graph-manage="showGraphModal = true"
       @open-settings="openSettingsModal"
@@ -23,8 +24,21 @@
       @open-log-panel="showLogPanel = true"
     />
 
+    <!-- 未登录引导卡片 -->
+    <div v-if="!auth?.currentUser?.value" class="login-required">
+      <div class="login-card">
+        <div class="login-icon">◈</div>
+        <h2>需要登录</h2>
+        <p>登录后即可查看和管理您的知识图谱。</p>
+        <div class="login-actions">
+          <button class="btn btn-primary" @click="openAuthModal('login')">🔑 登录</button>
+          <button class="btn btn-secondary" @click="openAuthModal('register')">✨ 注册</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 主内容区 -->
-    <main class="main-content">
+    <main v-else class="main-content">
       <!-- 左侧：图谱面板 -->
       <div class="panel-left">
         <!-- 动态渲染模式切换按钮 -->
@@ -851,21 +865,21 @@ const openUserLLMConfigModal = async () => {
   showUserLLMConfigModal.value = true
 }
 
-const createLLMConfig = async () => {
-  if (!llmConfigForm.api_key) return
+const createLLMConfig = async (formData) => {
+  // 修复：接收 UserLLMConfigModal 传来的 form data（之前错误地读 Home.vue 自己的 llmConfigForm，导致 api_key 永远空 → 直接 return）
+  if (!formData?.api_key) return
   llmConfigLoading.value = true
   try {
     await userLLMConfigAPI.create({
-      provider: llmConfigForm.provider,
-      api_key: llmConfigForm.api_key,
-      base_url: llmConfigForm.base_url,
-      model_name: llmConfigForm.model_name,
+      provider: formData.provider,
+      api_key: formData.api_key,
+      base_url: formData.base_url,
+      model_name: formData.model_name,
       is_active: userLLMConfigs.value.length === 0
     })
     await loadUserLLMConfigs()
-    llmConfigForm.api_key = ''
-    llmConfigForm.base_url = ''
     alert('配置添加成功！')
+    showUserLLMConfigModal.value = false  // 关闭弹窗
   } catch (error) {
     alert('添加配置失败: ' + error.message)
   } finally {
@@ -931,6 +945,24 @@ useKeyboardShortcuts({
   undo,
   openSearchModal: () => {},
   deleteSelectedNode
+})
+
+// 处理 GraphToolbar 的图谱切换事件
+const handleSwitchGraph = (graphId) => {
+  if (graphId && graphId !== currentGraphId.value) {
+    router.push(`/graph/${graphId}`)
+  }
+}
+
+// 兜底 watch — 即使直接修改 currentGraphId 也触发 loadGraph
+watch(currentGraphId, async (newId) => {
+  if (newId && route.params.id !== newId) {
+    // 仅在路由未自动跳转时手动跳转（防止死循环）
+    await nextTick()
+    if (route.params.id !== newId) {
+      router.push(`/graph/${newId}`)
+    }
+  }
 })
 
 // Watch route
@@ -1019,5 +1051,48 @@ onMounted(async () => {
   background: var(--color-primary);
   color: white;
   border-color: var(--color-primary);
+}
+
+/* 未登录引导卡片 */
+.login-required {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  background: var(--color-bg);
+}
+
+.login-card {
+  max-width: 420px;
+  text-align: center;
+  padding: 48px 32px;
+  background: var(--color-white);
+  border: 1px solid var(--color-gray-lighter);
+  border-radius: var(--radius-lg);
+}
+
+.login-icon {
+  font-size: 48px;
+  color: var(--color-primary);
+  margin-bottom: 16px;
+}
+
+.login-card h2 {
+  font-size: 22px;
+  margin-bottom: 12px;
+  color: var(--color-black);
+}
+
+.login-card p {
+  color: var(--color-gray);
+  margin-bottom: 24px;
+  line-height: 1.6;
+}
+
+.login-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
 }
 </style>

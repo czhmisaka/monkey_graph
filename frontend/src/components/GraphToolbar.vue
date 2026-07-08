@@ -9,13 +9,14 @@
       <span class="version-tag">v2.0</span>
       <!-- 全屏切换按钮 -->
       <button class="btn btn-sm fullscreen-btn" @click="toggleFullscreen" :title="isFullscreen ? '退出全屏' : '全屏显示'">
-        <span>⛶</span>
+        <span v-if="isFullscreen">⤡ 退出</span>
+        <span v-else>⤢ 全屏</span>
       </button>
     </div>
     <div class="header-center">
       <!-- 图谱选择器 -->
       <div class="graph-selector">
-        <select v-model="currentGraphId" @change="onGraphSelectChange" class="select">
+        <select :value="currentGraphId" @change="onGraphSelectChange" class="select">
           <option v-for="graph in graphs" :key="graph.id" :value="graph.id">
             {{ graph.name }}
           </option>
@@ -74,7 +75,7 @@
 <script setup>
 import { useFullscreen } from '../composables/useFullscreen'
 import GraphStats from './GraphStats.vue'
-import StatusBar from './StatusBar.vue'
+import StatusBar from './Layout/StatusBar.vue'
 
 const props = defineProps({
   graphs: {
@@ -113,6 +114,7 @@ const props = defineProps({
 
 const emit = defineEmits([
   'update:currentGraphId',
+  'switch-graph',
   'open-share',
   'open-graph-manage',
   'open-settings',
@@ -128,8 +130,12 @@ const emit = defineEmits([
 
 const { isFullscreen, toggleFullscreen } = useFullscreen()
 
-const onGraphSelectChange = () => {
-  emit('update:currentGraphId', props.currentGraphId)
+const onGraphSelectChange = (event) => {
+  const newId = event.target.value
+  // 同步更新 v-model:currentGraphId
+  emit('update:currentGraphId', newId)
+  // 通知父组件切换图谱（触发路由跳转 + 重新加载数据）
+  emit('switch-graph', newId)
 }
 </script>
 
@@ -137,17 +143,21 @@ const onGraphSelectChange = () => {
 .header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 16px;
   padding: 12px 24px;
   background: var(--color-white);
   border-bottom: 1px solid var(--color-gray-lighter);
   flex-shrink: 0;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .header-left {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .logo {
@@ -175,13 +185,19 @@ const onGraphSelectChange = () => {
 .header-center {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 12px;
+  flex: 1;
+  min-width: 320px;
+  justify-content: flex-start;
+  overflow: visible;
 }
 
 .graph-selector {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .select {
@@ -191,6 +207,11 @@ const onGraphSelectChange = () => {
   background: var(--color-white);
   font-size: 14px;
   cursor: pointer;
+  min-width: 180px;
+  max-width: 240px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .select:focus {
@@ -201,7 +222,9 @@ const onGraphSelectChange = () => {
 .header-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .user-info {
@@ -259,11 +282,17 @@ const onGraphSelectChange = () => {
 .btn {
   padding: 8px 16px;
   background: var(--color-white);
+  color: var(--color-black);
   border: 1px solid var(--color-gray-lighter);
   border-radius: var(--radius-md);
   font-size: 13px;
   cursor: pointer;
   transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  white-space: nowrap;
 }
 
 .btn:hover {

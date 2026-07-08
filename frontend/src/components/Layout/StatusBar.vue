@@ -33,6 +33,8 @@ defineProps({
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .llm-status {
@@ -44,6 +46,8 @@ defineProps({
   color: var(--color-gray);
   background: var(--color-gray-lightest);
   border-radius: var(--radius-pill);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .llm-status.active {
@@ -60,6 +64,8 @@ defineProps({
   background: var(--color-gray-lightest);
   border-radius: var(--radius-pill);
   cursor: help;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .mcp-status.active {

@@ -56,6 +56,10 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# 加载 nvm（兼容不同 shell 环境）
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+
 # 导出 HOST 环境变量
 export HOST
 
@@ -96,18 +100,22 @@ else
     # 开发模式
     echo "║   📦 开发模式：后端代理前端开发服务器                      ║"
     
-    # 启动后端
-    echo "║   📡 启动后端服务...                                    ║"
+    # 启动后端（Node 24）
+    echo "║   📡 启动后端服务 (Node 24)...                          ║"
     cd "$SCRIPT_DIR/backend"
+    nvm use 24 > /dev/null 2>&1
+    # 确保 better-sqlite3 与当前 Node 版本兼容
+    npm rebuild better-sqlite3 2>/dev/null
     HOST="$HOST" npm start &
     BACKEND_PID=$!
     
     # 等待后端启动
     sleep 2
     
-    # 启动前端开发服务器
-    echo "║   🌐 启动前端开发服务器...                             ║"
+    # 启动前端开发服务器（Node 24，Vite 7 兼容）
+    echo "║   🌐 启动前端开发服务器 (Node 24)...                    ║"
     cd "$SCRIPT_DIR/frontend"
+    nvm use 24 > /dev/null 2>&1
     HOST="$HOST" npm run dev &
     FRONTEND_PID=$!
     
