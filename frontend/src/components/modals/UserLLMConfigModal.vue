@@ -288,11 +288,17 @@ const handleCreate = () => {
 .btn {
   padding: 8px 16px;
   background: var(--color-white);
+  color: var(--color-black);
   border: 1px solid var(--color-gray-lighter);
   border-radius: var(--radius-md);
   font-size: 13px;
   cursor: pointer;
   transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  white-space: nowrap;
 }
 
 .btn:hover {

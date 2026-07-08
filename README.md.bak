@@ -74,7 +74,7 @@
 ## 🚀 快速开始
 
 ### 环境要求
-- Node.js **24.x**（项目已硬要求，better-sqlite3 必须用 ABI 137 编译）
+- Node.js 22+（推荐使用 nvm 管理 Node 版本）
 - npm 或 pnpm
 
 ### 方式一：使用启动脚本（推荐）

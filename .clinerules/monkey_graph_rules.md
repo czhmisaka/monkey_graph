@@ -218,10 +218,9 @@ const result = await client.callTool('web_search', { query: '关键词' });
 # 查看可用版本
 nvm list
 
-# 使用项目指定的 Node 版本
-nvm use 18
-# 或
-nvm use 20
+# 使用项目指定的 Node 版本（已统一为 Node 24）
+nvm use 24
+# ABI 137 已验证
 ```
 
 ### 6.2 启动命令

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive, watch, nextTick } from 'vue'
 import { authAPI, setToken, setUser } from '../api'
 
 const props = defineProps({
@@ -14,6 +14,9 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close', 'login-success'])
+
+// 输入框 ref
+const usernameInputRef = ref(null)
 
 // 登录/注册模式
 const isLoginMode = ref(props.initialMode === 'login')
@@ -30,13 +33,23 @@ const authLoading = ref(false)
 // 错误信息
 const authError = ref('')
 
-// 监听 props.show 变化，同步 isLoginMode
-watch(() => props.show, (newVal) => {
+// 监听 props.show 变化，同步 isLoginMode 并自动聚焦用户名输入框
+watch(() => props.show, async (newVal) => {
   if (newVal) {
     isLoginMode.value = props.initialMode === 'login'
     authError.value = ''
     authForm.username = ''
     authForm.password = ''
+    // 等待 modal 渲染完成后再聚焦
+    await nextTick()
+    // 使用 ref 直接 focus，比 querySelector 更可靠
+    if (usernameInputRef.value) {
+      usernameInputRef.value.focus()
+    } else {
+      // 兜底用 querySelector
+      const usernameInput = document.querySelector('.auth-modal input[type="text"]')
+      if (usernameInput) usernameInput.focus()
+    }
   }
 })
 
@@ -99,9 +112,11 @@ const closeModal = () => {
         <div class="modal-body">
           <div class="form-group">
             <label>用户名</label>
-            <input 
-              v-model="authForm.username" 
-              type="text" 
+            <input
+              ref="usernameInputRef"
+              v-model="authForm.username"
+              type="text"
+              autofocus 
               class="input" 
               placeholder="请输入用户名"
               @keyup.enter="submitAuth"

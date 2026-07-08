@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, inject } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { authAPI, getToken, clearToken } from '../api/index.js'
+import { authAPI, getToken, clearToken } from '../../api/index.js'
 
 const router = useRouter()
 const route = useRoute()

@@ -18,7 +18,7 @@
 </template>
 
 <script setup>
-import LogPanel from '../LogPanel.vue'
+import LogPanel from '../Panels/LogPanel.vue'
 
 defineProps({
   modelValue: {
@@ -109,14 +109,15 @@ const emit = defineEmits(['update:modelValue', 'close'])
 
 .btn {
   padding: 8px 16px;
+    color: var(--color-black);
   background: var(--color-white);
   border: 1px solid var(--color-gray-lighter);
   border-radius: var(--radius-md);
   font-size: 13px;
   cursor: pointer;
-  transition: all 0.2s;
-}
+  
 
+}
 .btn:hover {
   border-color: var(--color-primary);
   color: var(--color-primary);

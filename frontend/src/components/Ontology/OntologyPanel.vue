@@ -182,7 +182,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import FileUpload from './FileUpload.vue'
+import FileUpload from '../Panels/FileUpload.vue'
 import { ontologyAPI, graphBuildAPI } from '../api'
 
 const emit = defineEmits(['graph-created'])
