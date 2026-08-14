@@ -1,12 +1,13 @@
 import express from 'express';
 import { agentOperations, graphOperations, graphAgentPermissionOperations } from '../database.js';
 import { agentAuthMiddleware } from '../agentAuth.js';
+import { requireGraphAccess } from './_helpers.js';
 import { formatListResponse, formatItemResponse, formatError } from '../utils/responseFormatter.js';
 
 const router = express.Router();
 
 // 获取图谱已授权的 Agent 列表
-router.get('/graphs/:graphId/agents', agentAuthMiddleware, (req, res) => {
+router.get('/graphs/:graphId/agents', agentAuthMiddleware, requireGraphAccess('write'), (req, res) => {
   try {
     const { graphId } = req.params;
 
@@ -26,7 +27,7 @@ router.get('/graphs/:graphId/agents', agentAuthMiddleware, (req, res) => {
 });
 
 // 授权 Agent 访问图谱
-router.post('/graphs/:graphId/agents', agentAuthMiddleware, (req, res) => {
+router.post('/graphs/:graphId/agents', agentAuthMiddleware, requireGraphAccess('write'), (req, res) => {
   try {
     const { graphId } = req.params;
     const { agent_id, permission = 'read' } = req.body;
@@ -68,7 +69,7 @@ router.post('/graphs/:graphId/agents', agentAuthMiddleware, (req, res) => {
 });
 
 // 更新 Agent 对图谱的权限
-router.put('/graphs/:graphId/agents/:agentId', agentAuthMiddleware, (req, res) => {
+router.put('/graphs/:graphId/agents/:agentId', agentAuthMiddleware, requireGraphAccess('write'), (req, res) => {
   try {
     const { graphId, agentId } = req.params;
     const { permission } = req.body;
@@ -99,7 +100,7 @@ router.put('/graphs/:graphId/agents/:agentId', agentAuthMiddleware, (req, res) =
 });
 
 // 撤销 Agent 对图谱的授权
-router.delete('/graphs/:graphId/agents/:agentId', agentAuthMiddleware, (req, res) => {
+router.delete('/graphs/:graphId/agents/:agentId', agentAuthMiddleware, requireGraphAccess('write'), (req, res) => {
   try {
     const { graphId, agentId } = req.params;
 

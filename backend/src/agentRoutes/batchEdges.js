@@ -2,13 +2,14 @@ import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { graphOperations, nodeOperations, edgeOperations, graphAgentPermissionOperations } from '../database.js';
 import { agentAuthMiddleware, requirePermission, checkPerRequestLimit } from '../agentAuth.js';
+import { requireGraphAccess } from './_helpers.js';
 import { formatBatchResponse, formatError } from '../utils/responseFormatter.js';
 import { getBatchLimits } from '../config/batchConfig.js';
 
 const router = express.Router();
 
 // 批量创建边
-router.post('/graphs/:graphId/batch/edges', agentAuthMiddleware, requirePermission('edges', 'write'), (req, res) => {
+router.post('/graphs/:graphId/batch/edges', agentAuthMiddleware, requirePermission('edges', 'write'), requireGraphAccess('write'), (req, res) => {
   try {
     const { graphId } = req.params;
     const { edges } = req.body;

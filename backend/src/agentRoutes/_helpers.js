@@ -1,4 +1,38 @@
-import { edgeOperations, nodeOperations } from '../database.js';
+import { edgeOperations, nodeOperations, graphOperations, graphAgentPermissionOperations } from '../database.js';
+
+/**
+ * 图谱级访问控制中间件工厂
+ * 校验请求中的 :graphId 是否对该 Agent 可访问（或可写）
+ * 用于封堵"仅校验 permission 未校验图谱归属"的越权路径
+ * @param {'read'|'write'} mode - 需要的访问级别
+ */
+export function requireGraphAccess(mode = 'read') {
+  return (req, res, next) => {
+    const graphId = req.params.graphId;
+    if (!graphId) {
+      return res.status(400).json({ error: '缺少 graphId 参数', code: 'MISSING_GRAPH_ID' });
+    }
+
+    const graph = graphOperations.getById(graphId);
+    if (!graph) {
+      return res.status(404).json({ error: '图谱不存在', code: 'GRAPH_NOT_FOUND' });
+    }
+
+    const hasAccess = mode === 'write'
+      ? graphAgentPermissionOperations.hasWriteAccess(req.agent.id, graphId)
+      : graphAgentPermissionOperations.hasAccess(req.agent.id, graphId);
+
+    if (!hasAccess) {
+      return res.status(403).json({
+        error: '没有权限访问此图谱',
+        code: 'GRAPH_ACCESS_DENIED',
+        required: { graphId, mode }
+      });
+    }
+
+    next();
+  };
+}
 
 // BFS 路径查找
 export function findPathBFS(graphId, startNodeId, endNodeId, maxDepth) {

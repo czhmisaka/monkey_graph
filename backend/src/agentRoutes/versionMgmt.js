@@ -1,12 +1,13 @@
 import express from 'express';
 import { graphOperations, graphVersionOperations } from '../database.js';
 import { agentAuthMiddleware, requirePermission } from '../agentAuth.js';
+import { requireGraphAccess } from './_helpers.js';
 import { formatListResponse, formatError } from '../utils/responseFormatter.js';
 
 const router = express.Router();
 
 // 创建快照
-router.post('/graphs/:graphId/snapshot', agentAuthMiddleware, requirePermission('graphs', 'write'), (req, res) => {
+router.post('/graphs/:graphId/snapshot', agentAuthMiddleware, requirePermission('graphs', 'write'), requireGraphAccess('write'), (req, res) => {
   try {
     const { graphId } = req.params;
     const { name, description } = req.body;
@@ -36,7 +37,7 @@ router.post('/graphs/:graphId/snapshot', agentAuthMiddleware, requirePermission(
 });
 
 // 获取版本列表
-router.get('/graphs/:graphId/versions', agentAuthMiddleware, requirePermission('graphs', 'read'), (req, res) => {
+router.get('/graphs/:graphId/versions', agentAuthMiddleware, requirePermission('graphs', 'read'), requireGraphAccess('read'), (req, res) => {
   try {
     const { graphId } = req.params;
 
@@ -54,7 +55,7 @@ router.get('/graphs/:graphId/versions', agentAuthMiddleware, requirePermission('
 });
 
 // 回滚到指定版本
-router.post('/graphs/:graphId/rollback', agentAuthMiddleware, requirePermission('graphs', 'write'), (req, res) => {
+router.post('/graphs/:graphId/rollback', agentAuthMiddleware, requirePermission('graphs', 'write'), requireGraphAccess('write'), (req, res) => {
   try {
     const { graphId } = req.params;
     const { version } = req.body;

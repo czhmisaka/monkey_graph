@@ -1,6 +1,7 @@
 import express from 'express';
 import { graphOperations, nodeOperations } from '../database.js';
 import { agentAuthMiddleware, requirePermission } from '../agentAuth.js';
+import { requireGraphAccess } from './_helpers.js';
 import { formatError } from '../utils/responseFormatter.js';
 import {
   queryNodes,
@@ -15,7 +16,7 @@ import {
 const router = express.Router();
 
 // 排名查询（支持数值排序）
-router.post('/graphs/:graphId/nodes/rank', agentAuthMiddleware, requirePermission('graphs', 'read'), async (req, res) => {
+router.post('/graphs/:graphId/nodes/rank', agentAuthMiddleware, requirePermission('graphs', 'read'), requireGraphAccess('read'), async (req, res) => {
   try {
     const { graphId } = req.params;
     const { field, order = 'desc', filters, limit = 100 } = req.body;
@@ -41,7 +42,7 @@ router.post('/graphs/:graphId/nodes/rank', agentAuthMiddleware, requirePermissio
 });
 
 // Top-N 查询（快速获取排名前 N 的节点）
-router.get('/graphs/:graphId/nodes/top', agentAuthMiddleware, requirePermission('graphs', 'read'), async (req, res) => {
+router.get('/graphs/:graphId/nodes/top', agentAuthMiddleware, requirePermission('graphs', 'read'), requireGraphAccess('read'), async (req, res) => {
   try {
     const { graphId } = req.params;
     const { field, order = 'desc', limit = 10, filters } = req.query;
@@ -80,7 +81,7 @@ router.get('/query/operators', (req, res) => {
 });
 
 // 属性筛选 + 排序查询（核心接口）
-router.post('/graphs/:graphId/nodes/query', agentAuthMiddleware, requirePermission('graphs', 'read'), async (req, res) => {
+router.post('/graphs/:graphId/nodes/query', agentAuthMiddleware, requirePermission('graphs', 'read'), requireGraphAccess('read'), async (req, res) => {
   try {
     const { graphId } = req.params;
     const query = req.body;
@@ -102,7 +103,7 @@ router.post('/graphs/:graphId/nodes/query', agentAuthMiddleware, requirePermissi
 });
 
 // 聚合统计接口
-router.post('/graphs/:graphId/nodes/aggregate', agentAuthMiddleware, requirePermission('graphs', 'read'), async (req, res) => {
+router.post('/graphs/:graphId/nodes/aggregate', agentAuthMiddleware, requirePermission('graphs', 'read'), requireGraphAccess('read'), async (req, res) => {
   try {
     const { graphId } = req.params;
     const { field, operations, filters } = req.body;
@@ -132,7 +133,7 @@ router.post('/graphs/:graphId/nodes/aggregate', agentAuthMiddleware, requirePerm
 });
 
 // 按类型分组聚合
-router.get('/graphs/:graphId/nodes/aggregate/by-type', agentAuthMiddleware, requirePermission('graphs', 'read'), async (req, res) => {
+router.get('/graphs/:graphId/nodes/aggregate/by-type', agentAuthMiddleware, requirePermission('graphs', 'read'), requireGraphAccess('read'), async (req, res) => {
   try {
     const { graphId } = req.params;
     const { field, operations } = req.query;
@@ -168,7 +169,7 @@ router.get('/graphs/:graphId/nodes/aggregate/by-type', agentAuthMiddleware, requ
 });
 
 // 获取字段统计信息（用于了解图谱数据结构）
-router.get('/graphs/:graphId/nodes/field-stats', agentAuthMiddleware, requirePermission('graphs', 'read'), (req, res) => {
+router.get('/graphs/:graphId/nodes/field-stats', agentAuthMiddleware, requirePermission('graphs', 'read'), requireGraphAccess('read'), (req, res) => {
   try {
     const { graphId } = req.params;
 

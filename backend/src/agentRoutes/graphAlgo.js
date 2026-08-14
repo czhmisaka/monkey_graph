@@ -1,13 +1,14 @@
 import express from 'express';
 import { graphOperations, nodeOperations, edgeOperations, graphAgentPermissionOperations } from '../database.js';
 import { agentAuthMiddleware, requirePermission } from '../agentAuth.js';
+import { requireGraphAccess } from './_helpers.js';
 import { formatError } from '../utils/responseFormatter.js';
 import { findPathBFS } from './_helpers.js';
 
 const router = express.Router();
 
 // 获取两个节点之间的路径 (BFS)
-router.get('/graphs/:graphId/path', agentAuthMiddleware, requirePermission('graphs', 'read'), (req, res) => {
+router.get('/graphs/:graphId/path', agentAuthMiddleware, requirePermission('graphs', 'read'), requireGraphAccess('read'), (req, res) => {
   try {
     const { graphId } = req.params;
     const { source, target, max_depth } = req.query;
@@ -37,7 +38,7 @@ router.get('/graphs/:graphId/path', agentAuthMiddleware, requirePermission('grap
 });
 
 // 获取节点的度统计
-router.get('/graphs/:graphId/degrees', agentAuthMiddleware, requirePermission('graphs', 'read'), (req, res) => {
+router.get('/graphs/:graphId/degrees', agentAuthMiddleware, requirePermission('graphs', 'read'), requireGraphAccess('read'), (req, res) => {
   try {
     const { graphId } = req.params;
 
@@ -87,7 +88,7 @@ router.get('/graphs/:graphId/degrees', agentAuthMiddleware, requirePermission('g
 });
 
 // 获取节点的邻居
-router.get('/graphs/:graphId/nodes/:nodeId/neighbors', agentAuthMiddleware, requirePermission('graphs', 'read'), (req, res) => {
+router.get('/graphs/:graphId/nodes/:nodeId/neighbors', agentAuthMiddleware, requirePermission('graphs', 'read'), requireGraphAccess('read'), (req, res) => {
   try {
     const { graphId, nodeId } = req.params;
     const { type, limit } = req.query;

@@ -1,4 +1,5 @@
 import express from 'express';
+import { agentRateLimiter } from '../middleware/rateLimit.js';
 import agentMgmt from './agentMgmt.js';
 import graphOps from './graphOps.js';
 import agentAuthMgmt from './agentAuthMgmt.js';
@@ -16,6 +17,10 @@ import agentLogs from './agentLogs.js';
 import keywordSearch from './keywordSearch.js';
 
 const router = express.Router();
+
+// 全局 Agent API 速率限制（按 API Key 100/min，防滥用）
+// 注意: /register 已挂 jwtAuth，此限流在认证之前执行，未认证请求按 IP 限流
+router.use(agentRateLimiter);
 
 // Mount all route modules
 // Agent management routes: /register, /me, /rotate-key, /quota

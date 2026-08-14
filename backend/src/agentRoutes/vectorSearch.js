@@ -1,6 +1,7 @@
 import express from 'express';
 import { graphOperations, nodeOperations, vecSearchOperations } from '../database.js';
 import { agentAuthMiddleware, requirePermission } from '../agentAuth.js';
+import { requireGraphAccess } from './_helpers.js';
 import { formatError } from '../utils/responseFormatter.js';
 import {
   getEmbedding,
@@ -14,7 +15,7 @@ import {
 const router = express.Router();
 
 // 获取图谱的 embedding 状态
-router.get('/graphs/:graphId/embedding/status', agentAuthMiddleware, requirePermission('graphs', 'read'), async (req, res) => {
+router.get('/graphs/:graphId/embedding/status', agentAuthMiddleware, requirePermission('graphs', 'read'), requireGraphAccess('read'), async (req, res) => {
   try {
     const { graphId } = req.params;
 
@@ -43,7 +44,7 @@ router.get('/graphs/:graphId/embedding/status', agentAuthMiddleware, requirePerm
 });
 
 // 计算图谱中所有节点的 embedding
-router.post('/graphs/:graphId/embedding/compute', agentAuthMiddleware, requirePermission('nodes', 'write'), async (req, res) => {
+router.post('/graphs/:graphId/embedding/compute', agentAuthMiddleware, requirePermission('nodes', 'write'), requireGraphAccess('write'), async (req, res) => {
   try {
     const { graphId } = req.params;
 
@@ -92,7 +93,7 @@ router.post('/graphs/:graphId/embedding/compute', agentAuthMiddleware, requirePe
 });
 
 // 语义搜索节点（向量检索）
-router.get('/graphs/:graphId/embedding/search', agentAuthMiddleware, requirePermission('graphs', 'read'), async (req, res) => {
+router.get('/graphs/:graphId/embedding/search', agentAuthMiddleware, requirePermission('graphs', 'read'), requireGraphAccess('read'), async (req, res) => {
   try {
     const { graphId } = req.params;
     const { q, limit = 10 } = req.query;
@@ -140,7 +141,7 @@ router.get('/graphs/:graphId/embedding/search', agentAuthMiddleware, requirePerm
 });
 
 // 获取节点的相似节点（向量检索）
-router.get('/graphs/:graphId/embedding/similar/:nodeId', agentAuthMiddleware, requirePermission('graphs', 'read'), async (req, res) => {
+router.get('/graphs/:graphId/embedding/similar/:nodeId', agentAuthMiddleware, requirePermission('graphs', 'read'), requireGraphAccess('read'), async (req, res) => {
   try {
     const { graphId, nodeId } = req.params;
     const { limit = 10 } = req.query;
@@ -197,7 +198,7 @@ router.get('/graphs/:graphId/embedding/similar/:nodeId', agentAuthMiddleware, re
 });
 
 // 聚类分析（向量检索）
-router.post('/graphs/:graphId/embedding/cluster', agentAuthMiddleware, requirePermission('graphs', 'read'), async (req, res) => {
+router.post('/graphs/:graphId/embedding/cluster', agentAuthMiddleware, requirePermission('graphs', 'read'), requireGraphAccess('read'), async (req, res) => {
   try {
     const { graphId } = req.params;
     const { k = 3 } = req.body;
@@ -236,7 +237,7 @@ router.post('/graphs/:graphId/embedding/cluster', agentAuthMiddleware, requirePe
 });
 
 // 删除图谱的所有 embedding
-router.delete('/graphs/:graphId/embedding', agentAuthMiddleware, requirePermission('nodes', 'write'), async (req, res) => {
+router.delete('/graphs/:graphId/embedding', agentAuthMiddleware, requirePermission('nodes', 'write'), requireGraphAccess('write'), async (req, res) => {
   try {
     const { graphId } = req.params;
 

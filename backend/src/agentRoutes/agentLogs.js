@@ -26,11 +26,8 @@ router.get('/user/agents/logs', async (req, res) => {
     }
 
     // 获取用户创建的所有 Agent（通过 user_id 关联）
-    console.log('[日志API] 用户ID:', user.id);
     const userCreatedAgents = agentOperations.getByUserId(user.id);
-    console.log('[日志API] 用户创建的Agent:', userCreatedAgents);
     const agentIds = userCreatedAgents.map(a => a.id);
-    console.log('[日志API] Agent ID列表:', agentIds);
 
     // 如果用户没有创建任何 Agent，返回空数组
     if (agentIds.length === 0) {

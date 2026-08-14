@@ -24,12 +24,18 @@ const blacklistedIPs = new Set();
 
 /**
  * 获取客户端 IP
+ * 仅当配置 TRUST_PROXY=true（部署在可信反向代理之后）时才信任 X-Forwarded-For；
+ * 否则直接使用连接地址，防止攻击者伪造 XFF 头绕过限流/黑名单。
  */
 function getClientIP(req) {
-  return req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
-         req.headers['x-real-ip'] ||
-         req.connection?.remoteAddress ||
-         req.ip;
+  const trustProxy = process.env.TRUST_PROXY === 'true';
+  if (trustProxy) {
+    return req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+           req.headers['x-real-ip'] ||
+           req.connection?.remoteAddress ||
+           req.ip;
+  }
+  return req.connection?.remoteAddress || req.ip || 'unknown';
 }
 
 /**
@@ -132,6 +138,33 @@ export const uploadRateLimiter = createRateLimiter({
   max: 20,
   keyPrefix: 'upload',
   keyFn: (req) => req.user?.id || getClientIP(req)
+});
+
+/**
+ * 对话速率限制（按用户 10/min，防止 LLM 滥用）
+ */
+export const chatRateLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyPrefix: 'chat',
+  keyFn: (req) => req.user?.id || getClientIP(req)
+});
+
+/**
+ * Agent API Key 速率限制（按 API Key 100/min）
+ * 注意: Agent 认证使用 "Authorization: Agent <api_key>" 头，而非 x-api-key
+ */
+export const agentRateLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  max: 100,
+  keyPrefix: 'agent',
+  keyFn: (req) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Agent ')) {
+      return authHeader.substring(6).trim();
+    }
+    return req.headers['x-api-key'] || getClientIP(req);
+  }
 });
 
 /**

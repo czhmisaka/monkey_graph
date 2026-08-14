@@ -8,6 +8,7 @@ import {
   vecSearchOperations
 } from '../database.js';
 import { agentAuthMiddleware, requirePermission, checkPerRequestLimit } from '../agentAuth.js';
+import { requireGraphAccess } from './_helpers.js';
 import { formatBatchResponse, formatItemResponse, formatError } from '../utils/responseFormatter.js';
 import { getEmbeddings, nodeToEmbeddingText, isEmbeddingServiceAvailable } from '../services/embeddingService.js';
 import { getBatchLimits } from '../config/batchConfig.js';
@@ -15,7 +16,7 @@ import { getBatchLimits } from '../config/batchConfig.js';
 const router = express.Router();
 
 // 批量创建节点（自动计算 Embedding）
-router.post('/graphs/:graphId/batch/nodes', agentAuthMiddleware, requirePermission('nodes', 'write'), async (req, res) => {
+router.post('/graphs/:graphId/batch/nodes', agentAuthMiddleware, requirePermission('nodes', 'write'), requireGraphAccess('write'), async (req, res) => {
   try {
     const { graphId } = req.params;
     const { nodes, auto_embedding = true } = req.body;
@@ -100,7 +101,7 @@ router.post('/graphs/:graphId/batch/nodes', agentAuthMiddleware, requirePermissi
 });
 
 // 批量更新节点
-router.put('/graphs/:graphId/batch/nodes', agentAuthMiddleware, requirePermission('nodes', 'write'), (req, res) => {
+router.put('/graphs/:graphId/batch/nodes', agentAuthMiddleware, requirePermission('nodes', 'write'), requireGraphAccess('write'), (req, res) => {
   try {
     const { graphId } = req.params;
     const { nodes } = req.body;
@@ -146,7 +147,7 @@ router.put('/graphs/:graphId/batch/nodes', agentAuthMiddleware, requirePermissio
 });
 
 // 批量删除节点
-router.delete('/graphs/:graphId/batch/nodes', agentAuthMiddleware, requirePermission('nodes', 'delete'), (req, res) => {
+router.delete('/graphs/:graphId/batch/nodes', agentAuthMiddleware, requirePermission('nodes', 'delete'), requireGraphAccess('write'), (req, res) => {
   try {
     const { graphId } = req.params;
     const { node_ids } = req.body;
@@ -196,7 +197,7 @@ router.delete('/graphs/:graphId/batch/nodes', agentAuthMiddleware, requirePermis
 });
 
 // 删除单个节点
-router.delete('/graphs/:graphId/nodes/:nodeId', agentAuthMiddleware, requirePermission('nodes', 'delete'), (req, res) => {
+router.delete('/graphs/:graphId/nodes/:nodeId', agentAuthMiddleware, requirePermission('nodes', 'delete'), requireGraphAccess('write'), (req, res) => {
   try {
     const { graphId, nodeId } = req.params;
 
@@ -226,7 +227,7 @@ router.delete('/graphs/:graphId/nodes/:nodeId', agentAuthMiddleware, requirePerm
 });
 
 // 更新单个节点
-router.put('/graphs/:graphId/nodes/:nodeId', agentAuthMiddleware, requirePermission('nodes', 'write'), (req, res) => {
+router.put('/graphs/:graphId/nodes/:nodeId', agentAuthMiddleware, requirePermission('nodes', 'write'), requireGraphAccess('write'), (req, res) => {
   try {
     const { graphId, nodeId } = req.params;
     const { label, type, properties, x, y } = req.body;

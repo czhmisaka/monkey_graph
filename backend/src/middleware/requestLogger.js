@@ -58,12 +58,36 @@ function writeLog(type, message, data = {}) {
 
 /**
  * 获取客户端 IP
+ * 仅当配置 TRUST_PROXY=true 时信任 X-Forwarded-For，防止伪造绕过
  */
 function getClientIP(req) {
-  return req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
-         req.headers['x-real-ip'] ||
-         req.connection?.remoteAddress ||
-         req.ip;
+  const trustProxy = process.env.TRUST_PROXY === 'true';
+  if (trustProxy) {
+    return req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+           req.headers['x-real-ip'] ||
+           req.connection?.remoteAddress ||
+           req.ip;
+  }
+  return req.connection?.remoteAddress || req.ip || 'unknown';
+}
+
+// 敏感参数名（脱敏用）
+const SENSITIVE_PARAM_PATTERNS = [/token/i, /password/i, /secret/i, /key/i, /authorization/i, /cookie/i];
+
+/**
+ * 脱敏 query 参数，避免 token/password 等敏感值落入日志
+ */
+function sanitizeQuery(query) {
+  if (!query || typeof query !== 'object') return query;
+  const out = {};
+  for (const [k, v] of Object.entries(query)) {
+    if (SENSITIVE_PARAM_PATTERNS.some(p => p.test(k))) {
+      out[k] = '[REDACTED]';
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
 }
 
 /**
@@ -74,7 +98,7 @@ function getRequestInfo(req) {
     method: req.method,
     url: req.originalUrl || req.url,
     path: req.path,
-    query: req.query,
+    query: sanitizeQuery(req.query),
     ip: getClientIP(req),
     userAgent: req.headers['user-agent'],
     contentType: req.headers['content-type'],

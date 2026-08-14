@@ -1,15 +1,16 @@
 import express from 'express';
 import { agentOperations, workspaceOperations } from '../database.js';
 import { agentAuthMiddleware } from '../agentAuth.js';
+import { jwtAuth } from '../auth.js';
 import { formatItemResponse, formatError } from '../utils/responseFormatter.js';
 import { getNextMonthReset } from './_helpers.js';
 
 const router = express.Router();
 
-// 注册新 Agent (需要用户认证)
-router.post('/register', (req, res) => {
+// 注册新 Agent（需要用户登录认证；权限/配额由服务端默认值决定，客户端不可自选）
+router.post('/register', jwtAuth, (req, res) => {
   try {
-    const { name, description, workspace_id, permissions, rate_limit, monthly_quota } = req.body;
+    const { name, description, workspace_id } = req.body;
 
     if (!name) {
       return res.status(400).json(formatError('Agent 名称不能为空', 'MISSING_NAME'));
@@ -27,9 +28,11 @@ router.post('/register', (req, res) => {
       name,
       description,
       workspace_id,
-      permissions,
-      rate_limit,
-      monthly_quota
+      user_id: req.user.id,
+      // 权限/配额由服务端默认值决定，不信任客户端传入值
+      permissions: undefined,
+      rate_limit: undefined,
+      monthly_quota: undefined
     });
 
     // 注册成功返回完整信息（需要显示 API key）
@@ -44,18 +47,14 @@ router.get('/me', agentAuthMiddleware, (req, res) => {
   res.json({ agent: formatItemResponse(req.agent, req.query, 'agent') });
 });
 
-// 更新 Agent 信息
+// 更新 Agent 信息（仅允许修改 name/description；权限、配额、启停仅管理员接口可改）
 router.put('/me', agentAuthMiddleware, (req, res) => {
   try {
-    const { name, description, permissions, rate_limit, monthly_quota, is_active } = req.body;
+    const { name, description } = req.body;
 
     const updated = agentOperations.update(req.agent.id, {
       name,
-      description,
-      permissions,
-      rate_limit,
-      monthly_quota,
-      is_active
+      description
     });
 
     res.json({ agent: formatItemResponse(updated, req.query, 'agent') });
