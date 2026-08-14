@@ -1,7 +1,7 @@
 import express from 'express';
-import { graphOperations, nodeOperations } from '../../../database.js';
+import { graphOperations, nodeOperations, vecSearchOperations } from '../../../database.js';
 import { authMiddleware } from '../../../auth.js';
-import { isEmbeddingServiceAvailable, getEmbeddingConfig } from '../../../services/embeddingService.js';
+import { isEmbeddingServiceAvailable, getEmbeddingConfig, computeVectorStats } from '../../../services/embeddingService.js';
 
 const router = express.Router();
 
@@ -116,7 +116,6 @@ router.delete('/graphs/:graphId/embedding', authMiddleware, async (req, res) => 
     nodeOperations.deleteEmbeddingsByGraphId(graphId);
 
     // 清理 sqlite-vec 索引
-    const { vecSearchOperations } = require('../../database.js');
     vecSearchOperations.clearIndexByGraphId(graphId);
 
     res.json({
@@ -158,7 +157,6 @@ router.get('/graphs/:graphId/embedding/stats', authMiddleware, async (req, res) 
     const vectors = nodesWithEmbedding.map(n => JSON.parse(n.embedding));
 
     // 计算统计信息
-    const { computeVectorStats } = require('../../services/embeddingService.js');
     const stats = computeVectorStats(vectors);
 
     res.json({

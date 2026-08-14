@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { graphOperations, nodeOperations, edgeOperations } from '../../database.js';
+import db, { graphOperations, nodeOperations, edgeOperations } from '../../database.js';
 import { authMiddleware } from '../../auth.js';
 import { canAccessGraph, canWriteGraph } from './_helpers.js';
 import { logger, auditLogger } from '../../logger.js';
@@ -259,9 +259,9 @@ router.delete('/graphs/:id', authMiddleware, (req, res) => {
     if (!oldGraph) {
       const graph = graphOperations.getById(req.params.id);
       if (graph && graph.user_id && graph.user_id.startsWith('agent-')) {
-        // 检查这个 agent 是否存在
-        const db = require('../database.js').default;
-        const agentExists = db.prepare('SELECT id FROM agents WHERE id = ?').get(graph.user_id);
+        // 检查这个 agent 是否存在（注意：agents.id 不含 'agent-' 前缀，需剥离后查询）
+        const agentId = graph.user_id.slice('agent-'.length);
+        const agentExists = db.prepare('SELECT id FROM agents WHERE id = ?').get(agentId);
         if (!agentExists) {
           // Agent 已删除，允许创建图谱的原始用户删除（通过检查 graph_agent_permissions 或其他线索）
           // 这里简化为：任何认证用户都可以删除由已删除 Agent 创建的图谱

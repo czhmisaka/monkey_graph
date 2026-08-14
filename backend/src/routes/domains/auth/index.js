@@ -1,11 +1,12 @@
 import express from 'express';
 import { userOperations } from '../../../database.js';
-import { authMiddleware, generateToken } from '../../../auth.js';
+import { authMiddleware, generateToken, setAuthCookie, clearAuthCookie } from '../../../auth.js';
+import { loginRateLimiter, registerRateLimiter } from '../../../middleware/rateLimit.js';
 
 const router = express.Router();
 
 // 用户注册
-router.post('/auth/register', async (req, res) => {
+router.post('/auth/register', registerRateLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
 
@@ -23,11 +24,11 @@ router.post('/auth/register', async (req, res) => {
 
     const newUser = await userOperations.create({ username, password });
     const token = generateToken(newUser);
+    setAuthCookie(res, token);
 
     res.status(201).json({
       success: true,
-      user: { id: newUser.id, username: newUser.username },
-      token
+      user: { id: newUser.id, username: newUser.username }
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -35,7 +36,7 @@ router.post('/auth/register', async (req, res) => {
 });
 
 // 用户登录
-router.post('/auth/login', async (req, res) => {
+router.post('/auth/login', loginRateLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
 
@@ -53,15 +54,21 @@ router.post('/auth/login', async (req, res) => {
     }
 
     const token = generateToken(user);
+    setAuthCookie(res, token);
 
     res.json({
       success: true,
-      user: { id: user.id, username: user.username, is_admin: user.is_admin },
-      token
+      user: { id: user.id, username: user.username, is_admin: user.is_admin }
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
+// 注销
+router.post('/auth/logout', (req, res) => {
+  clearAuthCookie(res);
+  res.json({ success: true, message: '已退出登录' });
 });
 
 // 获取当前用户信息

@@ -848,7 +848,8 @@ function updateStatsCache() {
     const edgeCount = db.prepare('SELECT COUNT(*) as count FROM edges').get().count;
 
     let databaseSize = 0;
-    const dbPath = path.join(__dirname, '..', '..', '..', 'data', 'knowledge-graph.db');
+    // 从 backend/src/routes/domains/admin/ 到 backend/data/ 需要 4 层 ..
+    const dbPath = path.join(__dirname, '..', '..', '..', '..', 'data', 'knowledge-graph.db');
     try {
       const stats = fs.statSync(dbPath);
       databaseSize = stats.size;

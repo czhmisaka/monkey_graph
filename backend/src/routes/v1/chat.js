@@ -1,15 +1,17 @@
 import express from 'express';
 import { graphOperations, nodeOperations, edgeOperations } from '../../database.js';
 import { authMiddleware } from '../../auth.js';
-import { chat, agentChat } from '../../llmService.js';
+import { chat, agentChat, tools } from '../../llmService.js';
 import { registerConversation, cancelConversation, clearConversation, isConversationCancelled } from '../../conversationStore.js';
+import { getMCPStatus } from '../../mcpClient.js';
+import { chatRateLimiter } from '../../middleware/rateLimit.js';
 
 const router = express.Router();
 
 // ========== 聊天接口（需要认证）==========
 
 // 发送消息 (Agent 模式)
-router.post('/chat', authMiddleware, async (req, res) => {
+router.post('/chat', authMiddleware, chatRateLimiter, async (req, res) => {
   try {
     const { messages, maxIterations, graphId } = req.body;
 
@@ -43,7 +45,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
 });
 
 // SSE 流式聊天接口
-router.post('/chat/stream', authMiddleware, async (req, res) => {
+router.post('/chat/stream', authMiddleware, chatRateLimiter, async (req, res) => {
   // 创建 AbortController 用于取消
   const abortController = new AbortController();
   const signal = abortController.signal;
@@ -51,18 +53,22 @@ router.post('/chat/stream', authMiddleware, async (req, res) => {
   const { graphId } = req.body;
   const userId = req.user.id;
 
-  // 注册此对话
-  registerConversation(graphId, userId, abortController);
+  // SSE 超时配置（默认 5 分钟，防止连接无限保持）
+  const SSE_TIMEOUT = parseInt(process.env.SSE_TIMEOUT || '300', 10) * 1000;
+  let sseTimeoutTimer = null;
+  let timedOut = false;
+  let cleanedUp = false;
 
   // 心跳间隔（毫秒），0 表示禁用
   const heartbeatInterval = parseInt(process.env.SSE_HEARTBEAT_INTERVAL || '30', 10) * 1000;
   let heartbeatTimer = null;
+  let cancelCheckInterval = null;
 
   // 启动心跳
   const startHeartbeat = () => {
     if (heartbeatInterval > 0) {
       heartbeatTimer = setInterval(() => {
-        if (!signal.aborted && res.writable) {
+        if (!signal.aborted && res.writable && !timedOut) {
           res.write(': ping\n\n');
         }
       }, heartbeatInterval);
@@ -75,6 +81,38 @@ router.post('/chat/stream', authMiddleware, async (req, res) => {
       clearInterval(heartbeatTimer);
       heartbeatTimer = null;
     }
+  };
+
+  // SSE 超时保护
+  const startSseTimeout = () => {
+    if (SSE_TIMEOUT > 0) {
+      sseTimeoutTimer = setTimeout(() => {
+        timedOut = true;
+        abortController.abort();
+        if (res.writable) {
+          res.write(`data: ${JSON.stringify({ type: 'error', message: '请求超时，连接已关闭' })}\n\n`);
+        }
+        cleanup();
+        res.end();
+      }, SSE_TIMEOUT);
+    }
+  };
+
+  const clearSseTimeout = () => {
+    if (sseTimeoutTimer) {
+      clearTimeout(sseTimeoutTimer);
+      sseTimeoutTimer = null;
+    }
+  };
+
+  // 统一清理函数（幂等）
+  const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    stopHeartbeat();
+    clearSseTimeout();
+    if (cancelCheckInterval) clearInterval(cancelCheckInterval);
+    if (graphId && userId) clearConversation(graphId, userId);
   };
 
   try {
@@ -94,14 +132,23 @@ router.post('/chat/stream', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: '图谱不存在' });
     }
 
+    // 校验通过后才注册对话（避免失败请求泄漏 Map 条目）
+    registerConversation(graphId, userId, abortController);
+
+    // 客户端断开时统一清理（心跳、超时、轮询、LLM 任务）
+    req.on('close', () => {
+      if (!signal.aborted) abortController.abort();
+      cleanup();
+    });
+
     // 设置 SSE 响应头
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
-    res.setHeader('Access-Control-Allow-Origin', '*');
 
-    // 启动心跳
+    // 启动心跳与超时保护
     startHeartbeat();
+    startSseTimeout();
 
     // 检查是否已取消（轮询 Redis 状态，检测其他实例的取消操作）
     const checkCancellation = async () => {
@@ -120,16 +167,19 @@ router.post('/chat/stream', authMiddleware, async (req, res) => {
 
     const sendEvent = (data) => {
       // 检查是否已取消
-      if (signal.aborted) {
+      if (signal.aborted || timedOut) {
         return;
       }
-      res.write(`data: ${JSON.stringify(data)}\n\n`);
+      if (res.writable) {
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+      }
     };
 
     // 启动取消检查轮询（每 500ms）
-    const cancelCheckInterval = setInterval(async () => {
+    cancelCheckInterval = setInterval(async () => {
       if (await checkCancellation()) {
         clearInterval(cancelCheckInterval);
+        cancelCheckInterval = null;
       }
     }, 500);
 
@@ -165,25 +215,21 @@ router.post('/chat/stream', authMiddleware, async (req, res) => {
       cancelled: result.cancelled || false
     });
 
-    // 清理注册
-    stopHeartbeat();
-    clearInterval(cancelCheckInterval);
-    clearConversation(graphId, userId);
+    // 清理
+    cleanup();
     res.end();
   } catch (error) {
     // 如果是取消操作，不发送错误
     if (signal.aborted) {
       sendEvent({ type: 'cancelled', message: '对话已被用户取消' });
-      stopHeartbeat();
-      clearInterval(cancelCheckInterval);
-      clearConversation(graphId, userId);
+      cleanup();
       res.end();
       return;
     }
-    res.write(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`);
-    stopHeartbeat();
-    clearInterval(cancelCheckInterval);
-    clearConversation(graphId, userId);
+    if (res.writable) {
+      res.write(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`);
+    }
+    cleanup();
     res.end();
   }
 });
@@ -212,14 +258,12 @@ router.post('/chat/cancel', authMiddleware, (req, res) => {
 
 // 获取可用工具
 router.get('/tools', (req, res) => {
-  const { tools } = require('../llmService.js');
   res.json(tools);
 });
 
 // 获取 MCP 状态
 router.get('/mcp/status', (req, res) => {
   try {
-    const { getMCPStatus } = require('../mcpClient.js');
     const status = getMCPStatus();
     res.json(status);
   } catch (error) {
