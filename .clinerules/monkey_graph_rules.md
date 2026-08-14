@@ -24,13 +24,14 @@ czh_graph/
 ├── backend/                    # Express 后端
 │   ├── src/
 │   │   ├── index.js           # 入口文件
-│   │   ├── routes.js         # API 路由 (核心)
+│   │   ├── routes/            # API 路由 (v1 用户侧 + domains + agentRoutes)
+│   │   ├── agentRoutes/       # Agent API 路由 (API Key 认证)
 │   │   ├── database.js       # 数据库操作
 │   │   ├── auth.js           # JWT 认证
 │   │   ├── llmService.js     # LLM 服务
 │   │   ├── mcpClient.js      # MCP 客户端
 │   │   ├── logger.js         # 日志服务
-│   │   ├── services/         # 业务服务
+│   │   ├── services/         # 业务服务 (含 graphService 共享层)
 │   │   │   ├── embeddingService.js   # 向量嵌入服务
 │   │   │   ├── ontologyGenerator.js  # 本体生成
 │   │   │   ├── localGraphBuilder.js  # 图谱构建

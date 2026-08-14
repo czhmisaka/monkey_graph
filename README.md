@@ -984,14 +984,20 @@ czh_graph/
 │   ├── src/
 │   │   ├── index.js            # 入口文件
 │   │   ├── database.js         # SQLite 数据库
-│   │   ├── routes.js          # API 路由（核心）
+│   │   ├── routes/             # API 路由（v1 用户侧 + domains + agentRoutes）
+│   │   │   ├── v1/             # 用户侧路由（cookie 认证）
+│   │   │   ├── domains/        # auth/admin/ontology 域路由
+│   │   │   └── index.js        # 路由挂载入口
+│   │   ├── agentRoutes/        # Agent API 路由（API Key 认证）
+│   │   ├── services/           # 业务服务
+│   │   │   ├── graphService.js # 图谱共享服务（v1/agent 共用 CRUD）
+│   │   │   ├── embeddingService.js   # 向量嵌入
 │   │   ├── auth.js            # JWT 认证
 │   │   ├── agentAuth.js       # Agent API 认证
 │   │   ├── llmService.js      # LLM 服务
 │   │   ├── mcpClient.js       # MCP 客户端
 │   │   ├── logger.js          # 日志服务
-│   │   ├── services/          # 业务服务
-│   │   │   ├── embeddingService.js   # 向量嵌入
+│   │   ├── middleware/         # 错误处理/限流/校验中间件
 │   │   │   ├── textProcessor.js      # 文本处理
 │   │   │   ├── ontologyGenerator.js  # 本体生成
 │   │   │   └── localGraphBuilder.js  # 图谱构建
