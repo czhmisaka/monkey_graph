@@ -5,14 +5,16 @@
  * @FilePath: /czh_graph/frontend/src/router/index.js
  */
 import { createRouter, createWebHistory } from 'vue-router'
-import LandingPage from '../views/LandingPage.vue'
-import Home from '../views/Home.vue'
-import ShareView from '../views/ShareView.vue'
-import TenantDashboard from '../views/TenantDashboard.vue'
-import AdminDashboard from '../views/AdminDashboard.vue'
-import AgentManagement from '../views/AgentManagement.vue'
-import Pricing from '../views/Pricing.vue'
-import GraphDataManager from '../views/GraphDataManager.vue'
+
+// 路由级懒加载：各视图按需加载，减小首屏 bundle
+const LandingPage = () => import('../views/LandingPage.vue')
+const Home = () => import('../views/Home.vue')
+const ShareView = () => import('../views/ShareView.vue')
+const TenantDashboard = () => import('../views/TenantDashboard.vue')
+const AdminDashboard = () => import('../views/AdminDashboard.vue')
+const AgentManagement = () => import('../views/AgentManagement.vue')
+const Pricing = () => import('../views/Pricing.vue')
+const GraphDataManager = () => import('../views/GraphDataManager.vue')
 
 const routes = [
   {

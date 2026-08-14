@@ -274,8 +274,12 @@ if (!isProduction) {
       // 使用 express.static 托管静态文件
       app.use(express.static(frontendDistPath));
       
-      // SPA 路由支持：将所有路由回退到 index.html
+      // SPA 路由支持：将所有非 API 路由回退到 index.html
       app.get('*', (req, res) => {
+        // /api 路径不应回退到 SPA（未匹配的 API 请求交给 errorHandler 返回 JSON 404）
+        if (req.path.startsWith('/api')) {
+          return res.status(404).json({ error: '接口不存在', code: 'NOT_FOUND' });
+        }
         const indexPath = path.join(frontendDistPath, 'index.html');
         if (fs.existsSync(indexPath)) {
           res.sendFile(indexPath);

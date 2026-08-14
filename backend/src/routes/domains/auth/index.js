@@ -2,11 +2,12 @@ import express from 'express';
 import { userOperations } from '../../../database.js';
 import { authMiddleware, generateToken, setAuthCookie, clearAuthCookie } from '../../../auth.js';
 import { loginRateLimiter, registerRateLimiter } from '../../../middleware/rateLimit.js';
+import { validate, userRegisterSchema, userLoginSchema } from '../../../middleware/validate.js';
 
 const router = express.Router();
 
 // 用户注册
-router.post('/auth/register', registerRateLimiter, async (req, res) => {
+router.post('/auth/register', registerRateLimiter, validate(userRegisterSchema), async (req, res) => {
   try {
     const { username, password } = req.body;
 
@@ -36,7 +37,7 @@ router.post('/auth/register', registerRateLimiter, async (req, res) => {
 });
 
 // 用户登录
-router.post('/auth/login', loginRateLimiter, async (req, res) => {
+router.post('/auth/login', loginRateLimiter, validate(userLoginSchema), async (req, res) => {
   try {
     const { username, password } = req.body;
 

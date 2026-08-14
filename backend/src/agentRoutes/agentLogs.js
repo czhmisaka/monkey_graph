@@ -51,17 +51,16 @@ router.get('/user/agents/logs', async (req, res) => {
       logs = agentApiLogOperations.getByAgentIds(agentIds, limit);
     }
 
-    // 为每条日志获取图谱名称
+    // 为每条日志获取图谱名称（批量查询，消除 N+1）
+    const missingGraphIds = [...new Set(
+      logs.filter(l => l.graph_id && !l.graph_name).map(l => l.graph_id)
+    )];
+    const graphMap = graphOperations.getByIds(missingGraphIds);
+
     const logsWithGraphNames = logs.map(log => {
       let graphName = log.graph_name || '';
-      // 如果 graph_id 存在但 graph_name 为空，尝试获取图谱名称
       if (log.graph_id && !graphName) {
-        try {
-          const graph = graphOperations.getById(log.graph_id);
-          graphName = graph ? graph.name : '';
-        } catch (e) {
-          console.error('获取图谱名称失败:', e);
-        }
+        graphName = graphMap.get(log.graph_id)?.name || '';
       }
       return {
         ...log,

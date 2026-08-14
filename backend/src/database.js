@@ -7,7 +7,7 @@ dotenv.config({ path: path.join(path.dirname(fileURLToPath(import.meta.url)), '.
 import Database from 'better-sqlite3';
 import crypto from 'crypto';
 import * as vec from 'sqlite-vec';
-import { EMBEDDING_CONFIG } from './services/embeddingService.js';
+import { EMBEDDING_CONFIG } from './config/embedding.js';
 import { safeJsonParse } from './utils/safeParser.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -744,6 +744,14 @@ export const graphOperations = {
 
   getById(id) {
     return db.prepare('SELECT * FROM graphs WHERE id = ?').get(id);
+  },
+
+  // 批量获取图谱（单 SQL，避免 N+1）
+  getByIds(ids) {
+    if (!ids || ids.length === 0) return new Map();
+    const placeholders = ids.map(() => '?').join(',');
+    const rows = db.prepare(`SELECT * FROM graphs WHERE id IN (${placeholders})`).all(...ids);
+    return new Map(rows.map(g => [g.id, g]));
   },
 
   // 验证图谱是否属于指定用户

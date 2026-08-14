@@ -145,7 +145,6 @@ export default defineConfig({
         manualChunks: {
           'vue-vendor': ['vue', 'vue-router'],
           'editor-vendor': ['marked', 'dompurify'],
-          'chart-vendor': ['echarts'],
           'd3-vendor': ['d3'],
           'three-vendor': ['three']
         }

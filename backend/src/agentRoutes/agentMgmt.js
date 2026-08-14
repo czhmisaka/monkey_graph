@@ -4,11 +4,12 @@ import { agentAuthMiddleware } from '../agentAuth.js';
 import { jwtAuth } from '../auth.js';
 import { formatItemResponse, formatError } from '../utils/responseFormatter.js';
 import { getNextMonthReset } from './_helpers.js';
+import { validate, agentRegisterSchema } from '../middleware/validate.js';
 
 const router = express.Router();
 
 // 注册新 Agent（需要用户登录认证；权限/配额由服务端默认值决定，客户端不可自选）
-router.post('/register', jwtAuth, (req, res) => {
+router.post('/register', jwtAuth, validate(agentRegisterSchema), (req, res) => {
   try {
     const { name, description, workspace_id } = req.body;
 

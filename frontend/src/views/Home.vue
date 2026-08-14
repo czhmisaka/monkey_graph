@@ -242,23 +242,23 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, watch, nextTick, inject } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, watch, nextTick, inject, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ForceGraphPanel, RadialGraphPanel, ThreeGraphPanel } from '../components/graph'
 import ChatPanel from '../components/Chat/ChatPanel.vue'
 
-// Modal components
-import SearchModal from '../components/modals/SearchModal.vue'
-import ConfigModal from '../components/modals/ConfigModal.vue'
-import GraphManageModal from '../components/modals/GraphManageModal.vue'
-import NodeDetailModal from '../components/modals/NodeDetailModal.vue'
-import UserProfileModal from '../components/modals/UserProfileModal.vue'
-import UserLLMConfigModal from '../components/modals/UserLLMConfigModal.vue'
-import ShareModal from '../components/modals/ShareModal.vue'
-import GraphSettingsModal from '../components/modals/GraphSettingsModal.vue'
-import LogPanelModal from '../components/modals/LogPanelModal.vue'
-import ClusterModal from '../components/modals/ClusterModal.vue'
-import AuthManagementModal from '../components/modals/AuthManagementModal.vue'
+// Modal components（懒加载：打开时才加载，减小首屏 bundle）
+const SearchModal = defineAsyncComponent(() => import('../components/modals/SearchModal.vue'))
+const ConfigModal = defineAsyncComponent(() => import('../components/modals/ConfigModal.vue'))
+const GraphManageModal = defineAsyncComponent(() => import('../components/modals/GraphManageModal.vue'))
+const NodeDetailModal = defineAsyncComponent(() => import('../components/modals/NodeDetailModal.vue'))
+const UserProfileModal = defineAsyncComponent(() => import('../components/modals/UserProfileModal.vue'))
+const UserLLMConfigModal = defineAsyncComponent(() => import('../components/modals/UserLLMConfigModal.vue'))
+const ShareModal = defineAsyncComponent(() => import('../components/modals/ShareModal.vue'))
+const GraphSettingsModal = defineAsyncComponent(() => import('../components/modals/GraphSettingsModal.vue'))
+const LogPanelModal = defineAsyncComponent(() => import('../components/modals/LogPanelModal.vue'))
+const ClusterModal = defineAsyncComponent(() => import('../components/modals/ClusterModal.vue'))
+const AuthManagementModal = defineAsyncComponent(() => import('../components/modals/AuthManagementModal.vue'))
 
 // Components
 import GraphToolbar from '../components/GraphToolbar.vue'
