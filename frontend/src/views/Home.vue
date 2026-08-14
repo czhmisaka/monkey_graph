@@ -275,7 +275,13 @@ import { useExport } from '../composables/useExport'
 import { useGraphManager } from '../composables/useGraphManager'
 import { useChatSession } from '../composables/useChatSession'
 import { useGraphOperations } from '../composables/useGraphOperations'
-import api, { graphsAPI, graphAPI, configAPI, authAPI, userLLMConfigAPI, shareAPI, mcpAPI } from '../api'
+import { useNodeDetail } from '../composables/useNodeDetail'
+import { useProfile } from '../composables/useProfile'
+import { useLLMConfigs } from '../composables/useLLMConfigs'
+import { useGraphWorkspace } from '../composables/useGraphWorkspace'
+import { useLLMStatus } from '../composables/useLLMStatus'
+import { useAgentAuth } from '../composables/useAgentAuth'
+import { graphsAPI } from '../api'
 
 // Emit
 const emit = defineEmits(['settings-update'])
@@ -293,12 +299,7 @@ const {
   currentGraphId,
   graphMode,
   loadGraphs,
-  loadGraphByRoute,
-  switchGraphMode,
-  createGraph: createGraphFn,
-  saveGraphName: saveGraphNameFn,
-  duplicateGraph: duplicateGraphFn,
-  deleteGraph: deleteGraphFn
+  switchGraphMode
 } = useGraphManager()
 
 // Graph data
@@ -313,8 +314,7 @@ const {
   showSettingsModal,
   graphSettings,
   loadGraphSettings,
-  saveGraphSettings: saveGraphSettingsApi,
-  openSettingsModal: openSettingsModalFn
+  openSettingsModal
 } = useGraphSettings(currentGraphId)
 
 // Chat session - sendMessage wrapper to handle emit
@@ -347,54 +347,28 @@ const {
   handleSettingsUpdate
 } = useGraphOperations(currentGraphId, graphData, graphPanelRef, graphSettings)
 
-// LLM status
-const llmConfigured = ref(false)
-const mcpStatus = ref({ connected: false, degraded: false, message: 'MCP 未连接' })
+// Graph workspace：图谱 CRUD + 分享
+const {
+  showGraphModal,
+  showShareModal,
+  graphShares,
+  shareForm,
+  shareLoading,
+  createGraph,
+  saveGraphName,
+  duplicateGraph,
+  deleteGraph,
+  openShareModal,
+  createShare,
+  copyShareLink,
+  deleteShare
+} = useGraphWorkspace({ graphs, currentGraphId, router, loadGraphNormal })
 
 // Export loading
 const exportLoading = ref(false)
 
 // Log panel
 const showLogPanel = ref(false)
-
-// Config modal
-const showConfigModal = ref(false)
-const configForm = reactive({
-  apiKey: '',
-  baseURL: '',
-  model: ''
-})
-
-// Graph modal
-const showGraphModal = ref(false)
-const newGraphName = ref('')
-
-// Profile modal
-const showProfileModal = ref(false)
-const profileForm = reactive({
-  avatar: '',
-  bio: ''
-})
-const profileLoading = ref(false)
-
-// User LLM config modal
-const showUserLLMConfigModal = ref(false)
-const userLLMConfigs = ref([])
-const llmConfigForm = reactive({
-  provider: 'openai',
-  api_key: '',
-  base_url: '',
-  model_name: 'gpt-4o'
-})
-const llmConfigLoading = ref(false)
-
-// Share modal
-const showShareModal = ref(false)
-const graphShares = ref([])
-const shareForm = reactive({
-  allow_edit: false
-})
-const shareLoading = ref(false)
 
 // Search
 const showSearchModal = ref(false)
@@ -420,7 +394,8 @@ const {
   resetCluster,
   highlightClusterNodes,
   clearClusterHighlight,
-  focusClusterInGraph
+  focusClusterInGraph,
+  openClusterModal
 } = useClustering(graphData, graphPanelRef, currentGraphId, embeddingStatus)
 
 // MiniGraph
@@ -429,6 +404,13 @@ const { renderMiniGraph } = useMiniGraph(
   selectedNodeData,
   associationLevel,
   getNodeColor
+)
+
+// Node detail orchestration
+const { handleNodeClick, viewNodeDetail, handleEdgeHover, onAssociationLevelChange } = useNodeDetail(
+  handleNodeClickFn,
+  viewNodeDetailFn,
+  renderMiniGraph
 )
 
 // Streaming
@@ -447,12 +429,51 @@ const {
   submitAuth
 } = useAuth()
 
-// Auth management
-const showAgentAuthModal = ref(false)
-const authTab = ref('list')
-const selectedGraphForAuth = ref(null)
-const graphAuthList = ref([])
-const availableAgents = ref([])
+// Profile
+const {
+  showProfileModal,
+  profileForm,
+  profileLoading,
+  openProfileModal,
+  saveProfile
+} = useProfile(auth)
+
+// User LLM config
+const {
+  showUserLLMConfigModal,
+  userLLMConfigs,
+  llmConfigLoading,
+  openUserLLMConfigModal,
+  createLLMConfig,
+  activateLLMConfig,
+  deleteLLMConfig
+} = useLLMConfigs()
+
+// LLM/MCP status + LLM 配置弹窗
+const {
+  llmConfigured,
+  mcpStatus,
+  showConfigModal,
+  configForm,
+  checkLLMStatus,
+  checkMCPStatus,
+  saveConfig,
+  handleConfigClick
+} = useLLMStatus(auth, openUserLLMConfigModal)
+
+// Agent 授权管理
+const {
+  showAgentAuthModal,
+  authTab,
+  selectedGraphForAuth,
+  graphAuthList,
+  availableAgents,
+  openAuthManagementModal,
+  openGraphAuthDetail,
+  updateAgentPermission,
+  revokeAgentAuth,
+  authorizeAgent
+} = useAgentAuth()
 
 // MiniGraph D3 variables
 let miniGraphSvg = null
@@ -487,274 +508,6 @@ const saveGraphSettings = async () => {
   } catch (error) {
     alert('保存配置失败: ' + error.message)
   }
-}
-
-const openShareModal = async () => {
-  if (!currentGraphId.value) return
-  try {
-    graphShares.value = await shareAPI.getShares(currentGraphId.value)
-  } catch (error) {
-    graphShares.value = []
-  }
-  shareForm.allow_edit = false
-  showShareModal.value = true
-}
-
-const loadGraphShares = async () => {
-  if (!currentGraphId.value) return
-  try {
-    graphShares.value = await shareAPI.getShares(currentGraphId.value)
-  } catch (error) {
-    graphShares.value = []
-  }
-}
-
-const createShare = async () => {
-  if (!currentGraphId.value) return
-  shareLoading.value = true
-  try {
-    await shareAPI.createShare(currentGraphId.value, { allow_edit: shareForm.allow_edit })
-    await loadGraphShares()
-    alert('分享链接已生成！')
-  } catch (error) {
-    alert('生成失败: ' + error.message)
-  } finally {
-    shareLoading.value = false
-  }
-}
-
-const getShareUrl = (token) => {
-  return `${window.location.origin}/share/${token}`
-}
-
-const copyShareLink = async (token) => {
-  const url = getShareUrl(token)
-  try {
-    await navigator.clipboard.writeText(url)
-    alert('链接已复制到剪贴板！')
-  } catch {
-    alert('复制失败，请手动复制')
-  }
-}
-
-const deleteShare = async (shareId) => {
-  if (!confirm('确定要取消这个分享吗？')) return
-  if (!currentGraphId.value) return
-  try {
-    await shareAPI.deleteShare(currentGraphId.value, shareId)
-    await loadGraphShares()
-    alert('分享已取消！')
-  } catch (error) {
-    alert('取消失败: ' + error.message)
-  }
-}
-
-// Graph CRUD operations
-const createGraph = async (name) => {
-  newGraphName.value = name || ''
-  if (!newGraphName.value.trim()) {
-    alert('图谱名称不能为空')
-    return
-  }
-  try {
-    const newGraph = await graphsAPI.create({ name: newGraphName.value })
-    graphs.value.unshift(newGraph)
-    router.push(`/graph/${newGraph.id}`)
-    newGraphName.value = ''
-    showGraphModal.value = false
-  } catch (error) {
-    alert('创建图谱失败: ' + error.message)
-  }
-}
-
-const saveGraphName = async (graphId, name) => {
-  if (!graphId || !name.trim()) {
-    alert('图谱名称不能为空')
-    return
-  }
-  try {
-    await graphsAPI.update(graphId, { name })
-    const graph = graphs.value.find(g => g.id === graphId)
-    if (graph) {
-      graph.name = name
-    }
-    if (currentGraphId.value === graphId) {
-      await loadGraphNormal()
-    }
-  } catch (error) {
-    alert('保存图谱名称失败: ' + error.message)
-  }
-}
-
-const duplicateGraph = async (id) => {
-  try {
-    const newGraph = await graphsAPI.duplicate(id)
-    graphs.value.unshift(newGraph)
-    alert('图谱复制成功！')
-  } catch (error) {
-    alert('复制图谱失败: ' + error.message)
-  }
-}
-
-const deleteGraph = async (id) => {
-  if (!confirm('确定要删除这个图谱吗？此操作不可恢复。')) return
-  try {
-    await graphsAPI.delete(id)
-    graphs.value = graphs.value.filter(g => g.id !== id)
-    if (currentGraphId.value === id && graphs.value.length > 0) {
-      router.push(`/graph/${graphs.value[0].id}`)
-    }
-  } catch (error) {
-    alert('删除图谱失败: ' + error.message)
-  }
-}
-
-// LLM/MCP status
-const checkLLMStatus = async () => {
-  try {
-    const status = await configAPI.getLLMStatus()
-    llmConfigured.value = status.configured
-  } catch (error) {
-    llmConfigured.value = false
-  }
-}
-
-const checkMCPStatus = async () => {
-  try {
-    const status = await mcpAPI.getStatus()
-    mcpStatus.value = status
-  } catch (error) {
-    mcpStatus.value = {
-      connected: false,
-      degraded: true,
-      message: 'MCP 服务不可用'
-    }
-  }
-}
-
-const saveConfig = async () => {
-  try {
-    await configAPI.configureLLM(configForm)
-    llmConfigured.value = true
-    showConfigModal.value = false
-  } catch (error) {
-    alert('配置保存失败: ' + error.message)
-  }
-}
-
-// Auth management functions
-const loadAllGraphsAuth = async () => {
-  try {
-    const graphsData = await graphsAPI.getAll()
-
-    // 1. 拉取可用 Agent 列表(仍单次)
-    const agentsRes = await fetch('/api/agents', { credentials: 'include' })
-    if (agentsRes.ok) availableAgents.value = await agentsRes.json()
-
-    // 2. 批量获取所有图谱的授权(单次请求,替代 N+1)
-    const graphIds = graphsData.map(g => g.id)
-    const authMap = graphIds.length > 0
-      ? await api.post('/graphs/agents/batch', { graphIds })
-      : {}
-
-    graphAuthList.value = graphsData.map(graph => ({
-      graph,
-      authorizations: authMap[graph.id] || []
-    }))
-  } catch (e) {
-    console.error('加载图谱授权信息失败:', e)
-  }
-}
-
-const openAuthManagementModal = async () => {
-  showAgentAuthModal.value = true
-  authTab.value = 'list'
-  selectedGraphForAuth.value = null
-  await loadAllGraphsAuth()
-}
-
-const openGraphAuthDetail = async (graph) => {
-  selectedGraphForAuth.value = graph
-  authTab.value = 'detail'
-  await loadAllGraphsAuth()
-}
-
-const authorizeAgent = async (graphId, agentId, permission = 'read') => {
-  try {
-    const res = await fetch(`/api/graphs/${graphId}/agents`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agent_id: agentId, permission })
-    })
-    const data = await res.json()
-    if (!res.ok) {
-      alert(data.error || '授权失败')
-      return
-    }
-    await loadAllGraphsAuth()
-    alert('授权成功')
-  } catch (e) {
-    alert('授权失败: ' + e.message)
-  }
-}
-
-const revokeAgentAuth = async (graphId, agentId) => {
-  if (!confirm('确定要撤销此 Agent 的访问权限吗？')) return
-  try {
-    const res = await fetch(`/api/graphs/${graphId}/agents/${agentId}`, {
-      method: 'DELETE',
-      credentials: 'include'
-    })
-    const data = await res.json()
-    if (!res.ok) {
-      alert(data.error || '撤销失败')
-      return
-    }
-    await loadAllGraphsAuth()
-    alert('已撤销授权')
-  } catch (e) {
-    alert('撤销失败: ' + e.message)
-  }
-}
-
-const updateAgentPermission = async (graphId, agentId, permission) => {
-  try {
-    const res = await fetch(`/api/graphs/${graphId}/agents/${agentId}`, {
-      method: 'PUT',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ permission })
-    })
-    const data = await res.json()
-    if (!res.ok) {
-      alert(data.error || '更新失败')
-      return
-    }
-    await loadAllGraphsAuth()
-    alert('权限已更新')
-  } catch (e) {
-    alert('更新失败: ' + e.message)
-  }
-}
-
-// Node detail functions
-const handleNodeClick = (node) => {
-  handleNodeClickFn(node, renderMiniGraph)
-}
-
-const viewNodeDetail = (nodeId) => {
-  viewNodeDetailFn(nodeId, renderMiniGraph)
-}
-
-const handleEdgeHover = (edge, isHovering) => {
-  // Mini graph edge hover handling - delegated to useMiniGraph
-}
-
-const onAssociationLevelChange = () => {
-  nextTick(() => {
-    renderMiniGraph()
-  })
 }
 
 // Search functions
@@ -815,103 +568,6 @@ const openClusterModal = () => {
   clusterResult.value = null
   const nodeCount = graphData.nodes.length
   clusterK.value = Math.min(Math.max(3, Math.floor(nodeCount / 5)), 10)
-}
-
-// Profile functions
-const openProfileModal = async () => {
-  if (!auth?.currentUser?.value) return
-  profileForm.avatar = auth.currentUser.value.avatar || ''
-  profileForm.bio = auth.currentUser.value.bio || ''
-  showProfileModal.value = true
-}
-
-const saveProfile = async () => {
-  profileLoading.value = true
-  try {
-    const response = await authAPI.updateProfile({
-      avatar: profileForm.avatar,
-      bio: profileForm.bio
-    })
-    if (auth?.currentUser) {
-      auth.currentUser.value = { ...auth.currentUser.value, ...response.user }
-    }
-    showProfileModal.value = false
-    alert('资料保存成功！')
-  } catch (error) {
-    alert('保存失败: ' + error.message)
-  } finally {
-    profileLoading.value = false
-  }
-}
-
-// LLM config functions
-const loadUserLLMConfigs = async () => {
-  try {
-    userLLMConfigs.value = await userLLMConfigAPI.getAll()
-  } catch (error) {
-    userLLMConfigs.value = []
-  }
-}
-
-const openUserLLMConfigModal = async () => {
-  await loadUserLLMConfigs()
-  llmConfigForm.provider = 'openai'
-  llmConfigForm.api_key = ''
-  llmConfigForm.base_url = ''
-  llmConfigForm.model_name = 'gpt-4o'
-  showUserLLMConfigModal.value = true
-}
-
-const createLLMConfig = async (formData) => {
-  // 修复：接收 UserLLMConfigModal 传来的 form data（之前错误地读 Home.vue 自己的 llmConfigForm，导致 api_key 永远空 → 直接 return）
-  if (!formData?.api_key) return
-  llmConfigLoading.value = true
-  try {
-    await userLLMConfigAPI.create({
-      provider: formData.provider,
-      api_key: formData.api_key,
-      base_url: formData.base_url,
-      model_name: formData.model_name,
-      is_active: userLLMConfigs.value.length === 0
-    })
-    await loadUserLLMConfigs()
-    alert('配置添加成功！')
-    showUserLLMConfigModal.value = false  // 关闭弹窗
-  } catch (error) {
-    alert('添加配置失败: ' + error.message)
-  } finally {
-    llmConfigLoading.value = false
-  }
-}
-
-const activateLLMConfig = async (id) => {
-  try {
-    await userLLMConfigAPI.update(id, { is_active: true })
-    await loadUserLLMConfigs()
-    alert('已设为默认配置！')
-  } catch (error) {
-    alert('设置失败: ' + error.message)
-  }
-}
-
-const deleteLLMConfig = async (id) => {
-  if (!confirm('确定要删除这个配置吗？')) return
-  try {
-    await userLLMConfigAPI.delete(id)
-    await loadUserLLMConfigs()
-    alert('配置已删除！')
-  } catch (error) {
-    alert('删除失败: ' + error.message)
-  }
-}
-
-// Config click handler
-const handleConfigClick = () => {
-  if (auth?.currentUser?.value) {
-    openUserLLMConfigModal()
-  } else {
-    showConfigModal.value = true
-  }
 }
 
 // Auth modal
