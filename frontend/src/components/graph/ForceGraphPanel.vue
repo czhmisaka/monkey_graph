@@ -78,7 +78,6 @@ let transform = d3.zoomIdentity
 // ========== 性能优化：使用优化后的索引 ==========
 
 // 四叉树索引
-let quadtree = null
 
 // 空间索引（四叉树 + 网格）
 let spatialIndex = null
@@ -479,7 +478,6 @@ const updateGraphWithStreamingData = () => {
   edgesData = [...edgesData, ...normalizeEdges(newEdges, nodesData)]
   
   // 重新构建四叉树
-  buildQuadtree()
   
   // 更新模拟：使用 nodes() 替换所有节点（这是必要的，因为 D3 需要知道所有节点）
   // 但设置一个较小的 alpha，让现有节点只做微调，新节点自然融入
@@ -553,24 +551,6 @@ const normalizeEdges = (edges, nodes) => {
   })
 }
 
-// 构建四叉树空间索引
-const buildQuadtree = () => {
-  if (nodesData.length === 0) {
-    quadtree = null
-    return
-  }
-  
-  const xMin = Math.min(...nodesData.map(n => n.x)) - 100
-  const xMax = Math.max(...nodesData.map(n => n.x)) + 100
-  const yMin = Math.min(...nodesData.map(n => n.y)) - 100
-  const yMax = Math.max(...nodesData.map(n => n.y)) + 100
-  
-  quadtree = d3.quadtree()
-    .x(d => d.x)
-    .y(d => d.y)
-    .extent([[xMin, yMin], [xMax, yMax]])
-    .addAll(nodesData)
-}
 
 // 暴露方法
 defineExpose({
@@ -1141,7 +1121,6 @@ const updateGraph = () => {
   // 规范化边数据：将字符串 source/target 转换为对象引用
   edgesData = normalizeEdges(props.edges, nodesData)
   
-  buildQuadtree()
   
   if (simulation) {
     simulation.nodes(nodesData)
