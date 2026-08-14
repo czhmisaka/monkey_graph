@@ -475,11 +475,6 @@ const {
   authorizeAgent
 } = useAgentAuth()
 
-// MiniGraph D3 variables
-let miniGraphSvg = null
-let miniGraphG = null
-let miniSimulation = null
-
 // Graph component mapping
 const getGraphComponentByMode = (mode) => {
   switch (mode) {
@@ -493,12 +488,7 @@ const getGraphComponentByMode = (mode) => {
   }
 }
 
-// Helper functions
-const openSettingsModal = async () => {
-  await loadGraphSettings()
-  showSettingsModal.value = true
-}
-
+// Save graph settings
 const saveGraphSettings = async () => {
   if (!currentGraphId.value) return
   try {
@@ -515,13 +505,8 @@ const {
   checkEmbeddingStatus,
   computeEmbeddings,
   executeSearch,
-  handleSearchInput,
   viewSearchedNode: viewSearchedNodeFn
 } = useSearch(currentGraphId, embeddingStatus, () => graphSettings.value?.nodeTypes ? graphSettings.value.nodeTypes : {})
-
-const checkEmbeddingStatusFn = async () => {
-  await checkEmbeddingStatus()
-}
 
 // 打开搜索弹窗（真实实现，供 Ctrl+F 快捷键等调用）
 const openSearchModal = async () => {
@@ -530,19 +515,7 @@ const openSearchModal = async () => {
   searchResults.value = []
   searchError.value = ''
   // 同步 useSearch 内部状态并刷新向量嵌入状态
-  await checkEmbeddingStatusFn()
-}
-
-const computeEmbeddingsFn = async () => {
-  await computeEmbeddings()
-}
-
-const executeSearchFn = async () => {
-  await executeSearch()
-}
-
-const handleSearchInputFn = () => {
-  handleSearchInput()
+  await checkEmbeddingStatus()
 }
 
 const viewSearchedNode = (node) => {
@@ -556,18 +529,6 @@ const handleSearchModeChange = () => {
   if (useSemanticSearch.value && !embeddingStatus.value.hasEmbeddings) {
     searchError.value = '当前图谱尚未计算向量，请先在对话中让 AI 分析文档或手动触发向量计算'
   }
-}
-
-// Open cluster modal
-const openClusterModal = () => {
-  if (!embeddingStatus.value.hasEmbeddings) {
-    alert('请先计算向量再进行聚类分析')
-    return
-  }
-  showClusterModal.value = true
-  clusterResult.value = null
-  const nodeCount = graphData.nodes.length
-  clusterK.value = Math.min(Math.max(3, Math.floor(nodeCount / 5)), 10)
 }
 
 // Auth modal
