@@ -2,6 +2,7 @@ import express from 'express';
 import { graphOperations, nodeOperations, vecSearchOperations } from '../../../database.js';
 import { authMiddleware } from '../../../auth.js';
 import { exportVectorsToJSON, importVectorsFromJSON } from '../../../services/embeddingService.js';
+import { logger } from '../../../logger.js';
 
 const router = express.Router();
 
@@ -44,7 +45,7 @@ router.get('/graphs/:graphId/embedding/export', authMiddleware, async (req, res)
 
     res.send(jsonData);
   } catch (error) {
-    console.error('导出向量数据失败:', error);
+    logger.error('【Embedding】', '导出向量数据失败:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -70,7 +71,7 @@ router.post('/graphs/:graphId/embedding/import', authMiddleware, async (req, res
 
     // 解析导入数据
     const vectors = importVectorsFromJSON(data);
-    console.log(`[Embedding Import] 准备导入 ${vectors.length} 个向量`);
+    logger.info('【Embedding】', `[Embedding Import] 准备导入 ${vectors.length} 个向量`);
 
     // 更新节点的 embedding
     let updatedCount = 0;
@@ -89,7 +90,7 @@ router.post('/graphs/:graphId/embedding/import', authMiddleware, async (req, res
       imported: updatedCount
     });
   } catch (error) {
-    console.error('导入向量数据失败:', error);
+    logger.error('【Embedding】', '导入向量数据失败:', error);
     res.status(500).json({ error: error.message });
   }
 });

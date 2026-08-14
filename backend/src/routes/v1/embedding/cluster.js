@@ -6,6 +6,7 @@ import {
   dbscanClustering
 } from '../../../services/embeddingService.js';
 import { isLLMConfigured, getOpenAIClient, getCurrentModel } from '../../../llmService.js';
+import { logger } from '../../../logger.js';
 
 const router = express.Router();
 
@@ -24,7 +25,7 @@ router.post('/graphs/:graphId/embedding/cluster', authMiddleware, async (req, re
     const { graphId } = req.params;
     const { k = 3 } = req.body;
 
-    console.log(`[Cluster API] 开始聚类分析: graphId=${graphId}, k=${k}`);
+    logger.info('【Cluster】', `[Cluster API] 开始聚类分析: graphId=${graphId}, k=${k}`);
 
     // 验证图谱是否属于当前用户
     let graph = graphOperations.getByIdAndUserId(graphId, req.user.id);
@@ -47,21 +48,21 @@ router.post('/graphs/:graphId/embedding/cluster', authMiddleware, async (req, re
 
     // 如果仍然没有找到图谱，返回 404
     if (!graph) {
-      console.log(`[Cluster API] 图谱 ${graphId} 不存在`);
+      logger.info('【Cluster】', `[Cluster API] 图谱 ${graphId} 不存在`);
       return res.status(404).json({ error: '图谱不存在' });
     }
 
     // 获取有 embedding 的节点
     const nodesWithEmbedding = nodeOperations.getNodesWithEmbedding(graphId);
-    console.log(`[Cluster API] 图谱 ${graphId} 有 ${nodesWithEmbedding.length} 个节点有 embedding`);
+    logger.info('【Cluster】', `[Cluster API] 图谱 ${graphId} 有 ${nodesWithEmbedding.length} 个节点有 embedding`);
 
     if (nodesWithEmbedding.length < 2) {
-      console.log(`[Cluster API] 节点数量不足: ${nodesWithEmbedding.length}`);
+      logger.info('【Cluster】', `[Cluster API] 节点数量不足: ${nodesWithEmbedding.length}`);
       return res.status(400).json({ error: '需要至少 2 个节点才能进行聚类，请先点击"计算 Embedding"' });
     }
 
     if (nodesWithEmbedding.length < k) {
-      console.log(`[Cluster API] 节点数量 ${nodesWithEmbedding.length} 少于聚类数量 ${k}`);
+      logger.info('【Cluster】', `[Cluster API] 节点数量 ${nodesWithEmbedding.length} 少于聚类数量 ${k}`);
       return res.status(400).json({ error: `节点数量 (${nodesWithEmbedding.length}) 少于聚类数量 (${k})，请减少聚类数量` });
     }
 
@@ -78,9 +79,9 @@ router.post('/graphs/:graphId/embedding/cluster', authMiddleware, async (req, re
     const vectors = nodesWithEmbedding.map(n => JSON.parse(n.embedding));
 
     // 执行 K-means 聚类
-    console.log(`[Cluster API] 执行 K-means 聚类，k=${k}...`);
+    logger.info('【Cluster】', `[Cluster API] 执行 K-means 聚类，k=${k}...`);
     const clusters = kMeansClustering(vectors, k);
-    console.log(`[Cluster API] K-means 聚类完成，生成了 ${clusters.length} 个聚类`);
+    logger.info('【Cluster】', `[Cluster API] K-means 聚类完成，生成了 ${clusters.length} 个聚类`);
 
     // 更新进度
     clusteringProgress.set(graphId, {
@@ -108,12 +109,12 @@ router.post('/graphs/:graphId/embedding/cluster', authMiddleware, async (req, re
     }));
 
     // ========== 调用 LLM 为每个聚类逐一生成名称 ==========
-    console.log(`[Cluster API] 开始调用 LLM 为 ${clusterResults.length} 个聚类逐一生成名称...`);
-    console.log(`[Cluster API] LLM 配置状态: ${isLLMConfigured()}`);
+    logger.info('【Cluster】', `[Cluster API] 开始调用 LLM 为 ${clusterResults.length} 个聚类逐一生成名称...`);
+    logger.info('【Cluster】', `[Cluster API] LLM 配置状态: ${isLLMConfigured()}`);
 
     // 检查 LLM 是否可用
     if (!isLLMConfigured()) {
-      console.log('[Cluster API] ⚠️ LLM 未配置，使用默认聚类名称');
+      logger.info('【Cluster】', '[Cluster API] ⚠️ LLM 未配置，使用默认聚类名称');
       // 使用默认名称
       clusterResults = clusterResults.map((cluster, index) => ({
         ...cluster,
@@ -156,7 +157,7 @@ ${nodeList}${moreText}
 {"name": "名称", "description": "描述"}`;
 
         try {
-          console.log(`[Cluster API] 正在为聚类 ${i + 1}/${clusterResults.length} 生成名称...`);
+          logger.info('【Cluster】', `[Cluster API] 正在为聚类 ${i + 1}/${clusterResults.length} 生成名称...`);
 
           const completion = await openai.chat.completions.create({
             model: modelName,
@@ -168,7 +169,7 @@ ${nodeList}${moreText}
           });
 
           const responseText = completion.choices[0]?.message?.content || '';
-          console.log(`[Cluster API] 聚类 ${i + 1} LLM 返回: ${responseText.slice(0, 200)}...`);
+          logger.info('【Cluster】', `[Cluster API] 聚类 ${i + 1} LLM 返回: ${responseText.slice(0, 200)}...`);
 
           // 解析 JSON 响应
           try {
@@ -191,7 +192,7 @@ ${nodeList}${moreText}
                 try {
                   parsed = JSON.parse(match[0]);
                 } catch (e2) {
-                  console.log(`[Cluster API] 聚类 ${i + 1} JSON 解析失败`);
+                  logger.info('【Cluster】', `[Cluster API] 聚类 ${i + 1} JSON 解析失败`);
                 }
               }
             }
@@ -201,29 +202,29 @@ ${nodeList}${moreText}
               let description = (parsed.description || '').replace(/^["']|["']$/g, '').replace(/[,，。.]/g, '').trim();
               cluster.name = name;
               cluster.description = description;
-              console.log(`[Cluster API] ✅ 聚类 ${i + 1} 命名成功: ${name}`);
+              logger.info('【Cluster】', `[Cluster API] ✅ 聚类 ${i + 1} 命名成功: ${name}`);
             } else {
               throw new Error('无法解析 LLM 响应');
             }
           } catch (parseError) {
-            console.error(`[Cluster API] 聚类 ${i + 1} 解析失败:`, parseError.message);
+            logger.error('【Cluster】', `[Cluster API] 聚类 ${i + 1} 解析失败:`, parseError.message);
             cluster.name = `聚类 ${i + 1}`;
             cluster.description = `包含 ${cluster.nodes.length} 个节点`;
           }
         } catch (llmError) {
-          console.error(`[Cluster API] 聚类 ${i + 1} LLM 调用失败:`, llmError.message);
+          logger.error('【Cluster】', `[Cluster API] 聚类 ${i + 1} LLM 调用失败:`, llmError.message);
           cluster.name = `聚类 ${i + 1}`;
           cluster.description = `包含 ${cluster.nodes.length} 个节点`;
         }
       }
 
-      console.log(`[Cluster API] ✅ 所有聚类命名完成: ${clusterResults.map(c => c.name).join(', ')}`);
+      logger.info('【Cluster】', `[Cluster API] ✅ 所有聚类命名完成: ${clusterResults.map(c => c.name).join(', ')}`);
 
       // 清除进度
       clusteringProgress.delete(graphId);
     }
 
-    console.log(`[Cluster API] 聚类分析完成，返回 ${clusterResults.length} 个聚类`);
+    logger.info('【Cluster】', `[Cluster API] 聚类分析完成，返回 ${clusterResults.length} 个聚类`);
 
     res.json({
       success: true,
@@ -232,7 +233,7 @@ ${nodeList}${moreText}
       clusters: clusterResults
     });
   } catch (error) {
-    console.error('[Cluster API] 聚类分析失败:', error);
+    logger.error('【Cluster】', '[Cluster API] 聚类分析失败:', error);
     // 清除进度
     clusteringProgress.delete(req.params.graphId);
     res.status(500).json({ error: error.message });
@@ -265,9 +266,9 @@ router.post('/graphs/:graphId/embedding/cluster/dbscan', authMiddleware, async (
     const vectors = nodesWithEmbedding.map(n => JSON.parse(n.embedding));
 
     // 执行 DBSCAN 聚类
-    console.log(`[DBSCAN] 开始聚类: eps=${eps}, minPts=${minPts}`);
+    logger.info('【Cluster】', `[DBSCAN] 开始聚类: eps=${eps}, minPts=${minPts}`);
     const clusters = dbscanClustering(vectors, eps, minPts);
-    console.log(`[DBSCAN] 聚类完成: 生成了 ${clusters.length} 个聚类`);
+    logger.info('【Cluster】', `[DBSCAN] 聚类完成: 生成了 ${clusters.length} 个聚类`);
 
     // 映射回节点
     const nodeIdList = nodesWithEmbedding.map(n => n.id);
@@ -296,7 +297,7 @@ router.post('/graphs/:graphId/embedding/cluster/dbscan', authMiddleware, async (
       clusters: clusterResults
     });
   } catch (error) {
-    console.error('DBSCAN 聚类失败:', error);
+    logger.error('【Cluster】', 'DBSCAN 聚类失败:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -323,7 +324,7 @@ router.get('/graphs/:graphId/embedding/cluster/progress', authMiddleware, (req, 
 
     res.json(progress);
   } catch (error) {
-    console.error('[Cluster Progress API] 获取进度失败:', error);
+    logger.error('【Cluster】', '[Cluster Progress API] 获取进度失败:', error);
     res.status(500).json({ error: error.message });
   }
 });

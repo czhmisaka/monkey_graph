@@ -6,6 +6,7 @@ import {
   findSimilarNodes,
   filterBySimilarityThreshold
 } from '../../../services/embeddingService.js';
+import { logger } from '../../../logger.js';
 
 const router = express.Router();
 
@@ -20,10 +21,10 @@ router.get('/graphs/:graphId/embedding/search', authMiddleware, async (req, res)
     const { graphId } = req.params;
     const { q, limit = 10 } = req.query;
 
-    console.log(`[Semantic Search] 收到搜索请求: graphId=${graphId}, query="${q}", limit=${limit}`);
+    logger.info('【Search】', `[Semantic Search] 收到搜索请求: graphId=${graphId}, query="${q}", limit=${limit}`);
 
     if (!q) {
-      console.log('[Semantic Search] 搜索关键词为空');
+      logger.info('【Search】', '[Semantic Search] 搜索关键词为空');
       return res.status(400).json({ error: '搜索关键词不能为空' });
     }
 
@@ -48,23 +49,23 @@ router.get('/graphs/:graphId/embedding/search', authMiddleware, async (req, res)
 
     // 如果仍然没有找到图谱，返回 404
     if (!graph) {
-      console.log(`[Semantic Search] 图谱 ${graphId} 不存在`);
+      logger.info('【Search】', `[Semantic Search] 图谱 ${graphId} 不存在`);
       return res.status(404).json({ error: '图谱不存在' });
     }
 
     // 获取有 embedding 的节点
     const nodesWithEmbedding = nodeOperations.getNodesWithEmbedding(graphId);
-    console.log(`[Semantic Search] 图谱 ${graphId} 中有 ${nodesWithEmbedding.length} 个节点有 embedding`);
+    logger.info('【Search】', `[Semantic Search] 图谱 ${graphId} 中有 ${nodesWithEmbedding.length} 个节点有 embedding`);
 
     if (nodesWithEmbedding.length === 0) {
-      console.log('[Semantic Search] 图谱中没有计算 embedding');
+      logger.info('【Search】', '[Semantic Search] 图谱中没有计算 embedding');
       return res.status(400).json({ error: '图谱中还没有计算 embedding，请先点击"计算 Embedding"' });
     }
 
     // 计算查询的 embedding
-    console.log(`[Semantic Search] 正在为查询 "${q}" 计算 embedding...`);
+    logger.info('【Search】', `[Semantic Search] 正在为查询 "${q}" 计算 embedding...`);
     const queryEmbedding = await getEmbedding(q);
-    console.log(`[Semantic Search] 查询 embedding 维度: ${queryEmbedding?.length || 0}`);
+    logger.info('【Search】', `[Semantic Search] 查询 embedding 维度: ${queryEmbedding?.length || 0}`);
 
     // 查找相似节点
     const candidates = nodesWithEmbedding.map(n => ({
@@ -72,16 +73,16 @@ router.get('/graphs/:graphId/embedding/search', authMiddleware, async (req, res)
       label: n.label,
       embedding: JSON.parse(n.embedding)
     }));
-    console.log(`[Semantic Search] 候选节点: ${candidates.map(c => c.label).join(', ')}`);
+    logger.info('【Search】', `[Semantic Search] 候选节点: ${candidates.map(c => c.label).join(', ')}`);
 
-    console.log(`[Semantic Search] 正在计算余弦相似度，limit=${limit}...`);
+    logger.info('【Search】', `[Semantic Search] 正在计算余弦相似度，limit=${limit}...`);
     const similarNodes = findSimilarNodes(queryEmbedding, candidates, parseInt(limit));
-    console.log(`[Semantic Search] 找到 ${similarNodes.length} 个相似节点`);
+    logger.info('【Search】', `[Semantic Search] 找到 ${similarNodes.length} 个相似节点`);
 
     // 获取完整节点信息（排除 embedding 字段以减少响应大小）
     const results = similarNodes.map(similarity => {
       const node = nodesWithEmbedding.find(n => n.id === similarity.id);
-      console.log(`[Semantic Search] 相似节点: ${node?.label}, 相似度: ${(similarity.similarity * 100).toFixed(2)}%`);
+      logger.info('【Search】', `[Semantic Search] 相似节点: ${node?.label}, 相似度: ${(similarity.similarity * 100).toFixed(2)}%`);
       // 排除 embedding 字段
       const { embedding, ...nodeWithoutEmbedding } = node;
       return {
@@ -91,14 +92,14 @@ router.get('/graphs/:graphId/embedding/search', authMiddleware, async (req, res)
       };
     });
 
-    console.log(`[Semantic Search] 搜索完成，返回 ${results.length} 个结果`);
+    logger.info('【Search】', `[Semantic Search] 搜索完成，返回 ${results.length} 个结果`);
     res.json({
       success: true,
       query: q,
       results
     });
   } catch (error) {
-    console.error('[Semantic Search] 语义搜索失败:', error);
+    logger.error('【Search】', '[Semantic Search] 语义搜索失败:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -168,7 +169,7 @@ router.get('/graphs/:graphId/embedding/similar/:nodeId', authMiddleware, async (
       similarNodes: results
     });
   } catch (error) {
-    console.error('获取相似节点失败:', error);
+    logger.error('【Search】', '获取相似节点失败:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -239,7 +240,7 @@ router.get('/graphs/:graphId/embedding/search/advanced', authMiddleware, async (
       results: searchResults
     });
   } catch (error) {
-    console.error('高级搜索失败:', error);
+    logger.error('【Search】', '高级搜索失败:', error);
     res.status(500).json({ error: error.message });
   }
 });

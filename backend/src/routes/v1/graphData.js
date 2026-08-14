@@ -15,7 +15,6 @@ router.get('/graphs/:graphId/graph/stream', authMiddleware, async (req, res) => 
   logger.info('【GraphData】', `\n🌐 [SSE Stream] 开始流式加载图谱`);
   logger.info('【GraphData】', `   📋 图谱ID: ${graphId}`);
   logger.info('【GraphData】', `   👤 用户: ${req.user.username}`);
-  console.time(`[SSE Stream] 图谱 ${graphId} 加载耗时`);
 
   try {
     // 验证图谱是否属于当前用户
@@ -167,13 +166,11 @@ router.get('/graphs/:graphId/graph/stream', authMiddleware, async (req, res) => 
     logger.info('【GraphData】', `   ├─ 总耗时: ${totalTime}s`);
     logger.info('【GraphData】', `   ├─ 节点批次: ${nodeBatches}`);
     logger.info('【GraphData】', `   └─ 边批次: ${edgeBatches}`);
-    console.timeEnd(`[SSE Stream] 图谱 ${graphId} 加载耗时`);
     logger.info('【GraphData】', '');
 
     res.end();
   } catch (error) {
     logger.error('【GraphData】', `❌ [SSE Stream] 流式加载失败:`, error.message);
-    console.timeEnd(`[SSE Stream] 图谱 ${graphId} 加载耗时`);
     res.write(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`);
     res.end();
   }

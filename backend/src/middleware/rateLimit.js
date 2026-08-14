@@ -4,6 +4,7 @@
  */
 
 import { globalCache } from '../utils/simpleCache.js';
+import { logger } from '../logger.js';
 
 // 限制配置
 const DEFAULT_LIMITS = {
@@ -76,16 +77,16 @@ export function createRateLimiter(options = {}) {
     });
 
     if (count > config.max) {
-      console.warn(`[RateLimit] ${key} 请求超限 (${count}/${config.max})`);
+      logger.warn('【RateLimit】', `[RateLimit] ${key} 请求超限 (${count}/${config.max})`);
 
       // IP 维度才加入黑名单;user 维度不加入
       if (count > config.max * 3 && config.keyFn === getClientIP) {
         const ip = getClientIP(req);
         blacklistedIPs.add(ip);
-        console.error(`[RateLimit] IP ${ip} 已加入黑名单`);
+        logger.error('【RateLimit】', `[RateLimit] IP ${ip} 已加入黑名单`);
         setTimeout(() => {
           blacklistedIPs.delete(ip);
-          console.log(`[RateLimit] IP ${ip} 已从黑名单移除`);
+          logger.info('【RateLimit】', `[RateLimit] IP ${ip} 已从黑名单移除`);
         }, 30 * 60 * 1000);
       }
 

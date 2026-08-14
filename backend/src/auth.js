@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { userOperations, agentOperations, agentApiLogOperations } from './database.js';
+import { logger } from './logger.js';
 
 // 敏感字段脱敏(用于审计日志)
 // 递归遍历对象,将字段名匹配敏感模式的字段值替换为 '[REDACTED]'
@@ -254,7 +255,7 @@ function apiKeyAuthMiddleware(req, res, next) {
         nodes_affected: nodesAffected
       });
     } catch (logError) {
-      console.error('记录 API 日志失败:', logError.message);
+      logger.error('【Auth】', '记录 API 日志失败:', logError.message);
     }
 
     return originalSend.call(this, data);

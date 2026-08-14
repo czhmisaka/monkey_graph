@@ -6,6 +6,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { logger } from '../logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -50,7 +51,7 @@ function writeLog(type, message, data = {}) {
   try {
     fs.appendFileSync(logFile, logLine);
   } catch (error) {
-    console.error('[RequestLogger] 写入日志失败:', error);
+    logger.error('【RequestLogger】', '[RequestLogger] 写入日志失败:', error);
   }
   
   return logEntry;
@@ -163,8 +164,8 @@ export function requestLogger(req, res, next) {
   
   // 记录可疑请求
   if (suspiciousCheck.suspicious) {
-    console.warn(`[Security] 可疑请求: ${requestInfo.ip} - ${requestInfo.method} ${requestInfo.url}`);
-    console.warn(`           模式匹配: ${suspiciousCheck.pattern}`);
+    logger.warn('【RequestLogger】', `[Security] 可疑请求: ${requestInfo.ip} - ${requestInfo.method} ${requestInfo.url}`);
+    logger.warn('【RequestLogger】', `           模式匹配: ${suspiciousCheck.pattern}`);
     
     writeLog('security', '可疑请求', {
       ...requestInfo,
@@ -203,7 +204,7 @@ export function requestLogger(req, res, next) {
   
   // 捕获错误
   req.on('error', (error) => {
-    console.error('[RequestLogger] 请求错误:', error);
+    logger.error('【RequestLogger】', '[RequestLogger] 请求错误:', error);
     writeLog('error', '请求错误', {
       ...requestInfo,
       error: error.message
@@ -275,7 +276,7 @@ export function getRecentSecurityLogs(limit = 100) {
       }
     }
   } catch (error) {
-    console.error('[RequestLogger] 读取安全日志失败:', error);
+    logger.error('【RequestLogger】', '[RequestLogger] 读取安全日志失败:', error);
   }
   
   return logs;
