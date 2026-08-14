@@ -428,7 +428,7 @@ const { renderMiniGraph } = useMiniGraph(
   graphData,
   selectedNodeData,
   associationLevel,
-  () => graphSettings.value?.nodeTypes ? graphSettings.value.nodeTypes : {}
+  getNodeColor
 )
 
 // Streaming
@@ -770,6 +770,16 @@ const checkEmbeddingStatusFn = async () => {
   await checkEmbeddingStatus()
 }
 
+// 打开搜索弹窗（真实实现，供 Ctrl+F 快捷键等调用）
+const openSearchModal = async () => {
+  showSearchModal.value = true
+  searchKeyword.value = ''
+  searchResults.value = []
+  searchError.value = ''
+  // 同步 useSearch 内部状态并刷新向量嵌入状态
+  await checkEmbeddingStatusFn()
+}
+
 const computeEmbeddingsFn = async () => {
   await computeEmbeddings()
 }
@@ -930,7 +940,7 @@ useKeyboardShortcuts({
   selectedNodeData,
   closeNodeModal,
   undo,
-  openSearchModal: () => {},
+  openSearchModal,
   deleteSelectedNode
 })
 

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { myAgentAPI, agentLogsAPI, getCurrentUser } from '../api'
 import { marked } from 'marked'
@@ -639,6 +639,14 @@ onMounted(() => {
   checkAuth()
   if (isLoggedIn.value) {
     loadAgents()
+  }
+})
+
+// 组件卸载时停止日志自动刷新定时器（防止内存泄漏）
+onBeforeUnmount(() => {
+  if (logsRefreshTimer) {
+    clearInterval(logsRefreshTimer)
+    logsRefreshTimer = null
   }
 })
 </script>

@@ -1,84 +1,54 @@
 /**
  * 单元测试: AES-GCM 加解密、redactSecrets、JWT
  * 运行: node --test tests/unit.test.js
+ *
+ * 注意: 本测试直接 import 真实实现（database.js / auth.js），
+ *       使用测试专用密钥与临时数据库文件，不影响生产数据。
  */
 
-import { test } from 'node:test';
+process.env.ENCRYPTION_KEY = '8f3a1c9e2b7d4f6a0c5e8b2d9f1a7c3e5b8d2f4a6c0e9b1d3f5a7c9e2b4d6f8a';
+process.env.JWT_SECRET = 'test-jwt-secret-for-unit-tests-only';
+process.env.DB_PATH = process.env.TEST_DB_PATH || ':memory:';
+
+import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
-import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 
-// 模拟 encryptAPIKey / decryptAPIKey (与 database.js 中的实现保持一致)
-const ENCRYPTION_KEY = '9b5cd65af5a0011b7bf93f74a2be2b3eb443d4981cf0b87c0bade53d75528898';
-const KEY_BUF = Buffer.from(ENCRYPTION_KEY, 'hex').subarray(0, 32);
-const GCM_AAD = Buffer.from('user_llm_config');
+let encryptAPIKey, decryptAPIKey, redactSecrets;
 
-function encryptAPIKey(text) {
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', KEY_BUF, iv);
-  cipher.setAAD(GCM_AAD);
-  const ct = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return `gcm1:${iv.toString('hex')}:${tag.toString('hex')}:${ct.toString('hex')}`;
-}
-
-function decryptAPIKey(text) {
-  if (!text.startsWith('gcm1:')) return null;
-  const parts = text.split(':');
-  if (parts.length !== 4) return null;
-  const iv = Buffer.from(parts[1], 'hex');
-  const tag = Buffer.from(parts[2], 'hex');
-  const ctBuf = Buffer.from(parts[3], 'hex');
-  const decipher = crypto.createDecipheriv('aes-256-gcm', KEY_BUF, iv);
-  decipher.setAAD(GCM_AAD);
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(ctBuf), decipher.final()]).toString('utf8');
-}
-
-// 模拟 redactSecrets (与 auth.js 一致)
-const SENSITIVE_PATTERNS = [
-  /api[_-]?key/i, /token/i, /password/i, /secret/i,
-  /^authorization$/i, /^cookie$/i
-];
-
-function redactSecrets(obj, depth = 0) {
-  if (depth > 5) return '[DEPTH_LIMIT]';
-  if (obj === null || obj === undefined) return obj;
-  if (typeof obj !== 'object') return obj;
-  if (Array.isArray(obj)) return obj.map(v => redactSecrets(v, depth + 1));
-  const out = {};
-  for (const [k, v] of Object.entries(obj)) {
-    if (SENSITIVE_PATTERNS.some(p => p.test(k))) {
-      out[k] = '[REDACTED]';
-    } else {
-      out[k] = redactSecrets(v, depth + 1);
-    }
-  }
-  return out;
-}
+before(async () => {
+  const dbModule = await import('../src/database.js');
+  encryptAPIKey = dbModule.encryptAPIKey;
+  decryptAPIKey = dbModule.decryptAPIKey;
+  const authModule = await import('../src/auth.js');
+  redactSecrets = authModule.redactSecrets;
+});
 
 test('AES-GCM: 加解密可逆', () => {
   const plain = 'sk-cp-test-1234567890abcdef';
   const ct = encryptAPIKey(plain);
+  assert.ok(ct.startsWith('gcm1:'), '应输出 gcm1 前缀格式');
   const pt = decryptAPIKey(ct);
   assert.equal(pt, plain);
 });
 
-test('AES-GCM: 密文篡改应抛错', () => {
+test('AES-GCM: 密文篡改应返回 null（认证失败）', () => {
   const ct = encryptAPIKey('test');
   const tampered = ct.slice(0, -2) + 'ff';
-  assert.throws(() => decryptAPIKey(tampered));
+  const result = decryptAPIKey(tampered);
+  assert.equal(result, null);
 });
 
-test('AES-GCM: 每次加密产生不同 IV', () => {
+test('AES-GCM: 每次加密产生不同 IV（随机性）', () => {
   const a = encryptAPIKey('same');
   const b = encryptAPIKey('same');
   assert.notEqual(a, b);
 });
 
-test('AES-GCM: 旧 CBC 格式返回 null', () => {
-  const cbc = '0123456789abcdef0123456789abcdef:abcdef0123456789abcdef0123456789';
-  assert.equal(decryptAPIKey(cbc), null);
+test('AES-GCM: 非法输入返回空/null', () => {
+  assert.equal(encryptAPIKey(''), '');
+  assert.equal(decryptAPIKey(''), '');
+  assert.equal(decryptAPIKey('garbage-not-valid-format'), null);
 });
 
 test('redactSecrets: 顶层敏感字段', () => {
@@ -114,8 +84,14 @@ test('redactSecrets: 大小写不敏感 + 多种命名', () => {
   assert.equal(out['x-api-key'], '[REDACTED]');
 });
 
+test('redactSecrets: 深度限制', () => {
+  const deep = { a: { b: { c: { d: { e: { f: 'deep' } } } } } };
+  const out = redactSecrets(deep);
+  // e 位于 depth 5，其子字段 f 触发 depth>5 限制
+  assert.equal(out.a.b.c.d.e.f, '[DEPTH_LIMIT]');
+});
+
 test('JWT: 含 exp 字段', () => {
-  process.env.JWT_SECRET = 'test-secret';
   const SECRET = process.env.JWT_SECRET;
   const token = jwt.sign({ id: 'u1' }, SECRET, { expiresIn: '1h' });
   const decoded = jwt.verify(token, SECRET);
@@ -123,12 +99,10 @@ test('JWT: 含 exp 字段', () => {
   assert.ok(decoded.exp > Math.floor(Date.now() / 1000), 'exp 应在未来');
 });
 
-test('JWT: 过期 token 验证失败', () => {
-  process.env.JWT_SECRET = 'test-secret';
+test('JWT: 过期 token 验证失败', async () => {
   const SECRET = process.env.JWT_SECRET;
-  const token = jwt.sign({ id: 'u1' }, SECRET, { expiresIn: '0s' });
-  // 等待 1s 让过期生效
-  setTimeout(() => {
-    assert.throws(() => jwt.verify(token, SECRET), /expired/i);
-  }, 1100);
+  const token = jwt.sign({ id: 'u1' }, SECRET, { expiresIn: '1ms' });
+  // 等待过期生效
+  await new Promise(r => setTimeout(r, 50));
+  assert.throws(() => jwt.verify(token, SECRET), /expired/i);
 });

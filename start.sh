@@ -7,10 +7,13 @@
 # 默认使用 localhost (127.0.0.1)，使用 -p 参数切换到 0.0.0.0
 HOST="127.0.0.1"
 MODE="dev"  # dev: 开发模式, prod: 生产模式
-while getopts "ph" opt; do
+while getopts "phm:" opt; do
   case $opt in
     p)
       HOST="0.0.0.0"
+      ;;
+    m)
+      MODE="$OPTARG"
       ;;
     h)
       echo "用法: ./start.sh [-p] [-m mode]"
@@ -24,12 +27,19 @@ while getopts "ph" opt; do
       exit 0
       ;;
     \?)
-      echo "用法: ./start.sh [-p]"
+      echo "用法: ./start.sh [-p] [-m dev|prod]"
       echo "  -p  使用 0.0.0.0 host（允许外部访问）"
+      echo "  -m  模式: dev 或 prod"
       exit 1
       ;;
   esac
 done
+
+# 校验模式
+if [ "$MODE" != "dev" ] && [ "$MODE" != "prod" ]; then
+  echo "错误: 未知模式 '$MODE'，仅支持 dev 或 prod"
+  exit 1
+fi
 
 echo "╔═══════════════════════════════════════════════════════════╗"
 echo "║                                                           ║"

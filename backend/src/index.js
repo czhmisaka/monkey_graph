@@ -12,6 +12,7 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 // 导入其他模块（在 dotenv.config() 之后）
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import http from 'http';
@@ -25,7 +26,8 @@ const HOST = process.env.HOST || '127.0.0.1';
 
 // 判断是否为生产模式（通过环境变量或检查前端构建目录是否存在）
 const isProduction = process.env.NODE_ENV === 'production';
-const frontendDistPath = path.join(__dirname, '..', 'frontend', 'dist');
+// 前端构建产物位于项目根 frontend/dist（backend/src → 上两级）
+const frontendDistPath = process.env.FRONTEND_DIST_PATH || path.join(__dirname, '..', '..', 'frontend', 'dist');
 const frontendDevPort = process.env.FRONTEND_DEV_PORT || '13002';
 
 // 创建默认管理员账户（强制要求配置环境变量；缺失时启动失败）
@@ -125,7 +127,16 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.use(express.json());
+
+// 安全响应头（helmet）
+// SSE 需要禁用部分与流式响应冲突的头
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: false  // SPA 内联样式/脚本较多，由前端自行控制
+}));
+
+// JSON body 大小限制（防大请求体 DoS）
+app.use(express.json({ limit: '2mb' }));
 
 // Cookie 解析中间件 (无需 cookie-parser 依赖)
 // 仅解析 mg_token;格式: k1=v1; k2=v2
@@ -150,8 +161,14 @@ app.use((req, res, next) => {
   if (SAFE_METHODS.has(req.method)) return next();
   const origin = req.headers.origin || req.headers.referer;
   if (!origin) {
-    // 同源表单提交或无 origin 的客户端(curl) - 放行
-    // 因为 cookie 已 sameSite=lax,跨站表单无法携带 cookie
+    // 无 Origin 的非安全请求：若携带认证凭证（cookie 或 Bearer）则拒绝（防 CSRF 纵深防御）；
+    // 否则放行（curl / 内部服务等无浏览器上下文的调用）
+    const hasCredentials = req.cookies?.['mg_token'] ||
+      (req.headers.authorization && req.headers.authorization.startsWith('Bearer '));
+    if (hasCredentials) {
+      console.warn(`[CSRF] 无 Origin 但携带凭证的非安全请求被拒绝: ${req.method} ${req.path}`);
+      return res.status(403).json({ error: '跨站请求被拒绝 (CSRF)' });
+    }
     return next();
   }
   try {
@@ -174,6 +191,8 @@ app.use((req, res, next) => {
     return next();  // 无法解析 origin 时放行(交给 sameSite 防御)
   }
 });
+
+import { errorHandler } from './middleware/errorHandler.js';
 
 // 路由
 app.use('/api', routes);
@@ -239,8 +258,8 @@ app.get('/', (req, res) => {
 // 开发模式：代理非 API 请求到前端开发服务器
 if (!isProduction) {
   app.use((req, res, next) => {
-    // 跳过 API 请求和根路径
-    if (req.path.startsWith('/api') || req.path === '/') {
+    // 跳过 API 请求、根路径和健康检查（健康检查必须直达后端）
+    if (req.path.startsWith('/api') || req.path === '/' || req.path === '/health') {
       return next();
     }
     
@@ -283,12 +302,12 @@ app.get('/health', async (req, res) => {
     checks: {}
   };
 
-  // 1. 数据库探活
+  // 1. 数据库探活（不泄露内部错误细节）
   try {
     const dbState = db.prepare('SELECT 1 as ok').get();
     status.checks.database = dbState?.ok === 1 ? 'ok' : 'fail';
-  } catch (e) {
-    status.checks.database = 'fail: ' + e.message;
+  } catch {
+    status.checks.database = 'fail';
     status.status = 'degraded';
   }
 
@@ -315,6 +334,9 @@ app.get('/health', async (req, res) => {
 
   res.json(status);
 });
+
+// 统一错误处理中间件（必须在所有路由、静态文件与 /health 之后注册）
+app.use(errorHandler);
 
 // 启动服务器
 const server = HOST === '0.0.0.0' || HOST === '127.0.0.1' || HOST === 'localhost'

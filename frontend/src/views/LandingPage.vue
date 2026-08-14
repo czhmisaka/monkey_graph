@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, inject, nextTick } from 'vue'
+import { ref, onMounted, onBeforeUnmount, inject, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import * as d3 from 'd3'
 import { authAPI, statsAPI, graphsAPI, usageAPI, setCurrentUser } from '../api/index.js'
@@ -28,6 +28,10 @@ const statsLoading = ref(true)
 const bgGraphContainer = ref(null)
 const bgGraphData = ref({ nodes: [], edges: [] })
 
+// 背景图谱模拟与渲染定时器（模块级引用，便于卸载时清理）
+let bgSimulation = null
+let bgRenderTimer = null
+
 // 节点颜色映射
 const nodeColors = {
   person: '#4A90D9',
@@ -54,7 +58,8 @@ const loadRandomGraph = async () => {
         edges: graphData.edges || []
       }
       await nextTick()
-      setTimeout(() => renderBgGraph(), 100)
+      // 保存定时器 id，卸载时可清理
+      bgRenderTimer = setTimeout(() => renderBgGraph(), 100)
     }
   } catch (e) {
     console.error('加载背景图谱失败:', e)
@@ -129,10 +134,16 @@ const renderBgGraph = () => {
     return Math.max(Math.max(labelWidth, typeWidth) / 2 + 10, 25)
   }
   
+  // 重新渲染前停止上一次模拟
+  if (bgSimulation) {
+    bgSimulation.stop()
+    bgSimulation = null
+  }
+  
   const FLOAT_RADIUS = Math.min(width, height) / 3
   const FLOAT_STRENGTH = 0.08
   
-  const simulation = d3.forceSimulation(nodes)
+  bgSimulation = d3.forceSimulation(nodes)
     .velocityDecay(0.7)
     .force('link', d3.forceLink(edges).id(d => d.id).distance(100))
     .force('charge', d3.forceManyBody().strength(d => -getNodeSize(d) * 2))
@@ -212,7 +223,7 @@ const renderBgGraph = () => {
   }
   initNodeWidths()
   
-  simulation.on('tick', () => {
+  bgSimulation.on('tick', () => {
     linkGroup.select('.link').attr('d', d => {
       const { source, target } = getEdgeEnds(d)
       return getEdgePath(source, target)
@@ -233,8 +244,20 @@ const renderBgGraph = () => {
       .attr('width', d => d._width || 50)
   })
   
-  simulation.alphaTarget(0.1).restart()
+  bgSimulation.alphaTarget(0.1).restart()
 }
+
+// 卸载时清理背景图谱的模拟与定时器
+onBeforeUnmount(() => {
+  if (bgRenderTimer) {
+    clearTimeout(bgRenderTimer)
+    bgRenderTimer = null
+  }
+  if (bgSimulation) {
+    bgSimulation.stop()
+    bgSimulation = null
+  }
+})
 
 // 加载用户使用量
 const loadUserUsage = async () => {

@@ -1,4 +1,4 @@
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, nextTick, onUnmounted } from 'vue'
 import { embeddingAPI, graphAPI } from '../api'
 
 export function useSearch(currentGraphId, embeddingStatus, getNodeColor) {
@@ -18,6 +18,21 @@ export function useSearch(currentGraphId, embeddingStatus, getNodeColor) {
 
   // Search debounce timer
   let searchDebounceTimer = null
+  
+  // AbortController for cancelling in-flight requests
+  let searchAbortController = null
+
+  // Lifecycle: 组件卸载时自动清理定时器和未完成请求
+  onUnmounted(() => {
+    if (searchDebounceTimer) {
+      clearTimeout(searchDebounceTimer)
+      searchDebounceTimer = null
+    }
+    if (searchAbortController) {
+      searchAbortController.abort()
+      searchAbortController = null
+    }
+  })
 
   // Computed
   const searchMode = computed(() => useSemanticSearch.value ? 'semantic' : 'keyword')
@@ -49,12 +64,12 @@ export function useSearch(currentGraphId, embeddingStatus, getNodeColor) {
     }
 
     try {
-      console.log(`[useSearch] Checking embedding status for graph ${currentGraphId.value}...`)
       const status = await embeddingAPI.getGraphStatus(currentGraphId.value)
-      console.log(`[useSearch] Embedding status: available=${status.available}, isComplete=${status.isComplete}, computed=${status.computedNodes}/${status.totalNodes}`)
       embeddingStatus.value = {
         available: status.available || false,
-        hasEmbeddings: status.isComplete || false
+        hasEmbeddings: status.isComplete || false,
+        computedNodes: status.computedNodes || 0,
+        totalNodes: status.totalNodes || 0
       }
     } catch (error) {
       console.error('[useSearch] Check embedding status failed:', error)
@@ -62,138 +77,97 @@ export function useSearch(currentGraphId, embeddingStatus, getNodeColor) {
     }
   }
 
-  // Compute embeddings for all nodes
+  // Compute embeddings
   const computeEmbeddings = async () => {
-    if (!currentGraphId?.value || computingEmbedding.value) {
-      console.log('[useSearch] Compute embedding conditions not met or already computing')
-      return
-    }
+    if (!currentGraphId?.value) return
 
-    // Check if graph has nodes
-    if (embeddingStatus.value?.totalNodes === 0) {
-      console.log('[useSearch] Graph has no nodes, cannot compute vectors')
-      embeddingComputeMessage.value = '图谱中没有节点，无法计算向量'
-      embeddingComputeSuccess.value = false
-      return
-    }
-
-    console.log(`[useSearch] Starting embedding computation, graph ${currentGraphId.value} has nodes`)
     computingEmbedding.value = true
-    embeddingComputeMessage.value = ''
+    embeddingComputeMessage.value = '正在计算向量嵌入...'
+    embeddingComputeSuccess.value = false
 
     try {
-      console.log('[useSearch] Calling embedding API...')
       const result = await embeddingAPI.computeEmbeddings(currentGraphId.value)
-      console.log('[useSearch] Embedding computation result:', result)
-
       if (result.success) {
-        embeddingComputeMessage.value = `成功计算 ${result.computed}/${result.total} 个节点的向量`
         embeddingComputeSuccess.value = true
-        console.log(`[useSearch] Vector computation success: ${result.computed}/${result.total}`)
-
-        // Update embedding status
-        embeddingStatus.value.hasEmbeddings = true
-
-        // Clear error message
-        searchError.value = ''
+        embeddingComputeMessage.value = '向量计算完成！'
+        embeddingStatus.value = { available: true, hasEmbeddings: true }
       } else {
-        embeddingComputeMessage.value = result.message || '向量计算失败'
-        embeddingComputeSuccess.value = false
-        console.error('[useSearch] Vector computation failed:', result.message)
+        embeddingComputeMessage.value = result.error || '向量计算失败'
       }
     } catch (error) {
-      console.error('[useSearch] Compute embedding failed:', error)
-      embeddingComputeMessage.value = error.message || '向量计算失败，请确保 embedding 服务已启动'
-      embeddingComputeSuccess.value = false
+      console.error('[useSearch] Compute embeddings failed:', error)
+      embeddingComputeMessage.value = error.message || '向量计算失败'
     } finally {
       computingEmbedding.value = false
-
-      // Clear message after 5 seconds
-      setTimeout(() => {
-        embeddingComputeMessage.value = ''
-      }, 5000)
     }
   }
 
   // Execute search
   const executeSearch = async () => {
-    if (!searchKeyword.value.trim() || !currentGraphId?.value) {
-      console.log('[useSearch] Search conditions not met')
-      return
-    }
+    if (!searchKeyword.value.trim() || !currentGraphId?.value || searchLoading.value) return
 
-    console.log(`[useSearch] Execute search: graphId=${currentGraphId.value}, keyword="${searchKeyword.value.trim()}", semantic=${useSemanticSearch.value}, hasEmbeddings=${embeddingStatus.value?.hasEmbeddings}`)
+    // Cancel previous request if any
+    if (searchAbortController) {
+      searchAbortController.abort()
+    }
+    searchAbortController = new AbortController()
+
     searchLoading.value = true
     searchError.value = ''
 
     try {
       let results
-
       if (useSemanticSearch.value && embeddingStatus.value?.hasEmbeddings) {
-        // Semantic search
-        console.log('[useSearch] Execute semantic search...')
-        try {
-          const searchResponse = await embeddingAPI.semanticSearch(currentGraphId.value, searchKeyword.value.trim())
-          console.log('[useSearch] Semantic search response:', searchResponse)
-          results = searchResponse?.results || []
-          console.log('[useSearch] Semantic search results:', results)
-
-          // Add similarity score to results
-          if (results && results.length > 0) {
-            results = results.map(node => ({
-              ...node,
-              similarity: node.similarity || 0
-            }))
-          }
-          console.log(`[useSearch] Semantic search complete, found ${results?.length || 0} results`)
-        } catch (semanticError) {
-          console.error('[useSearch] Semantic search failed, falling back to keyword search:', semanticError)
-          searchError.value = '语义搜索失败，已自动切换到关键词搜索'
-          results = await graphAPI.searchNodes(currentGraphId.value, searchKeyword.value.trim())
-        }
+        const searchResponse = await embeddingAPI.semanticSearch(currentGraphId.value, searchKeyword.value.trim())
+        results = searchResponse?.results || []
       } else {
-        // Keyword search
-        console.log('[useSearch] Execute keyword search...')
         results = await graphAPI.searchNodes(currentGraphId.value, searchKeyword.value.trim())
-        console.log(`[useSearch] Keyword search complete, found ${results?.length || 0} results`)
       }
 
       searchResults.value = results || []
-      console.log(`[useSearch] Search results count: ${searchResults.value.length}`)
+      
+      if (results && results.length > 0) {
+        // 搜索成功消息 5 秒后自动清除
+        setTimeout(() => {
+          // No-op, just for message display timing
+        }, 5000)
+      }
     } catch (error) {
+      if (error.name === 'AbortError') {
+        console.log('[useSearch] Search aborted')
+        return
+      }
       console.error('[useSearch] Search failed:', error)
-      searchError.value = '搜索失败: ' + error.message
+      searchError.value = error.message || '搜索失败'
       searchResults.value = []
     } finally {
       searchLoading.value = false
+      searchAbortController = null
     }
   }
 
-  // Handle search input with debounce
-  const handleSearchInput = () => {
-    // Clear previous timer
+  // Handle search input (with debounce)
+  const handleSearchInput = (value) => {
+    searchKeyword.value = value
+    
     if (searchDebounceTimer) {
       clearTimeout(searchDebounceTimer)
     }
 
-    // Set new timer, execute search after 500ms (semantic search needs more time)
-    searchDebounceTimer = setTimeout(() => {
-      if (searchKeyword.value.trim() && currentGraphId?.value) {
+    if (value.trim().length > 0) {
+      searchDebounceTimer = setTimeout(() => {
         executeSearch()
-      } else {
-        searchResults.value = []
-      }
-    }, 500)
+      }, 300)
+    } else {
+      searchResults.value = []
+    }
   }
 
   // Handle search mode change
-  const handleSearchModeChange = () => {
-    searchResults.value = []
-    searchError.value = ''
-
-    // If switching to semantic search but no embeddings, show warning
-    if (useSemanticSearch.value && !embeddingStatus.value?.hasEmbeddings) {
-      searchError.value = '当前图谱尚未计算向量，请先在对话中让 AI 分析文档或手动触发向量计算'
+  const handleSearchModeChange = (isSemantic) => {
+    useSemanticSearch.value = isSemantic
+    if (searchKeyword.value.trim()) {
+      executeSearch()
     }
   }
 

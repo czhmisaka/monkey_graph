@@ -87,4 +87,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # 启动命令: 先运行迁移,再启动后端
 # 迁移失败时容器退出(让编排器感知)
-CMD ["sh", "-c", "cd /app && node migrations/migrator.js && node src/index.js"]
+# 注意: DB_PATH 必须与 database.js 的 dbPath (src/../data) 一致,即 /app/data
+CMD ["sh", "-c", "cd /app && DB_PATH=/app/data/knowledge-graph.db node migrations/migrator.js && node src/index.js"]

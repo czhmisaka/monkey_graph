@@ -159,7 +159,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import * as d3 from 'd3'
 import { shareAPI } from '../api'
@@ -421,6 +421,12 @@ const renderGraph = () => {
   const width = container.clientWidth || window.innerWidth
   const height = container.clientHeight || window.innerHeight - 150
   
+  // 重新渲染前停止上一次的模拟，避免多个 simulation 同时运行
+  if (simulation) {
+    simulation.stop()
+    simulation = null
+  }
+  
   // 清空
   const svg = d3.select(svgRef.value)
   svg.selectAll('*').remove()
@@ -625,15 +631,27 @@ const goHome = () => {
   router.push('/')
 }
 
+// 窗口尺寸变化处理（具名函数，便于卸载时移除）
+const handleResize = () => {
+  if (!loading.value && !error.value) {
+    renderGraph()
+  }
+}
+
 onMounted(() => {
   loadShare()
   
   // 监听窗口大小变化
-  window.addEventListener('resize', () => {
-    if (!loading.value && !error.value) {
-      renderGraph()
-    }
-  })
+  window.addEventListener('resize', handleResize)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize)
+  // 停止力导向模拟，释放定时器与监听
+  if (simulation) {
+    simulation.stop()
+    simulation = null
+  }
 })
 </script>
 

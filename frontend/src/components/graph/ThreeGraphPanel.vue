@@ -473,9 +473,10 @@ const updateParticlePositions = () => {
   particles.geometry.attributes.size.needsUpdate = true
 }
 
-// 动画循环
+// 动画循环（rAF id 用于卸载时停止）
+let animationFrameId = null
 const animate = () => {
-  requestAnimationFrame(animate)
+  animationFrameId = requestAnimationFrame(animate)
   
   // 更新控制
   controls.update()
@@ -603,6 +604,12 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  // 停止动画循环（防止卸载后持续空转）
+  if (animationFrameId !== null) {
+    cancelAnimationFrame(animationFrameId)
+    animationFrameId = null
+  }
+
   if (resizeObserver) resizeObserver.disconnect()
   
   // 清理事件监听

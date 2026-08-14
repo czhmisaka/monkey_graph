@@ -914,44 +914,46 @@ export const usageAPI = {
   getCurrent() {
     return api.get('/usage/current')
   },
-  // 获取使用统计（计算统计数据）
-  getStats() {
-    return api.get('/usage/current').then(res => {
-      // 根据使用量数据计算统计数据
-      const apiCalls = res?.usage?.api_calls || 0
-      
-      // 计算月均和趋势（这里使用简单的模拟数据，实际可从后端获取）
-      const now = new Date()
-      const currentMonth = now.getMonth()
-      const currentYear = now.getFullYear()
-      
-      // 模拟月度数据（实际项目中应该从后端获取）
-      const monthlyData = [
-        { month: `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`, calls: apiCalls },
-        { month: `${currentYear}-${String(currentMonth).padStart(2, '0')}`, calls: Math.floor(apiCalls * 0.8) },
-        { month: `${currentYear}-${String(currentMonth - 1 >= 0 ? currentMonth - 1 : 11).padStart(2, '0')}`, calls: Math.floor(apiCalls * 0.6) },
-      ]
-      
-      const totalApiCalls = monthlyData.reduce((sum, m) => sum + m.calls, 0)
-      const averageApiCalls = Math.round(totalApiCalls / monthlyData.length)
-      const maxApiCalls = Math.max(...monthlyData.map(m => m.calls))
-      
-      // 判断趋势：比较最近两个月
-      const trend = monthlyData[0].calls > monthlyData[1].calls 
-        ? 'increasing' 
-        : monthlyData[0].calls < monthlyData[1].calls 
-          ? 'decreasing' 
-          : 'stable'
-      
-      return {
-        stats: {
-          total_api_calls: totalApiCalls,
-          average_api_calls: averageApiCalls,
-          max_api_calls: maxApiCalls,
-          trend: trend
-        }
-      }
-    })
+  // 获取使用统计（基于后端真实数据）
+  async getStats() {
+    // 并行获取：用户使用量 + 全局统计（/api/stats/global 由后端统计缓存提供真实数据）
+    const [usageRes, globalStatsRes] = await Promise.all([
+      api.get('/usage/current').catch(() => null),
+      api.get('/stats/global').catch(() => null)
+    ])
+
+    const usage = usageRes?.usage || {}
+    const apiCalls = usage.api_calls || 0
+
+    // TODO: 后端目前没有真实的月度调用趋势接口（/usage/current 的 api_calls 为占位值），
+    // 因此月度明细只保留当前真实月份，趋势统一为 stable；
+    // 后续后端提供 /api/usage/stats 之类的真实月度数据后，替换这里的 monthlyData 即可。
+    const now = new Date()
+    const currentMonth = now.getMonth()
+    const currentYear = now.getFullYear()
+    const monthlyData = [
+      { month: `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`, calls: apiCalls }
+    ]
+
+    const totalApiCalls = monthlyData.reduce((sum, m) => sum + m.calls, 0)
+    const averageApiCalls = Math.round(totalApiCalls / monthlyData.length)
+    const maxApiCalls = Math.max(...monthlyData.map(m => m.calls))
+
+    return {
+      stats: {
+        total_api_calls: totalApiCalls,
+        average_api_calls: averageApiCalls,
+        max_api_calls: maxApiCalls,
+        trend: 'stable'
+      },
+      // 来自 /api/stats/global 的真实全局统计（接口失败时降级为 0，而不是伪造数据）
+      users: globalStatsRes?.users ?? 0,
+      graphs: globalStatsRes?.graphs ?? 0,
+      nodes: globalStatsRes?.nodes ?? 0,
+      edges: globalStatsRes?.edges ?? 0,
+      databaseSize: globalStatsRes?.databaseSize ?? 0,
+      updatedAt: globalStatsRes?.updatedAt ?? null
+    }
   }
 }
 

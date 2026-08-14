@@ -48,6 +48,17 @@ const truncateText = (text, maxWidth, fontSize = 12) => {
   return result !== text ? result + '...' : result
 }
 
+// XML 转义，防止 label / properties 等内容破坏 SVG 结构
+const escapeXml = (value) => {
+  if (value === undefined || value === null) return ''
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+}
+
 const MAX_NODE_WIDTH = 200
 
 // 字体缩放比例（与 SVG 渲染保持一致）
@@ -178,7 +189,7 @@ export function renderGraphToSVG(nodes, edges, settings = {}, width = 1920, heig
       if (label) {
         svg += `    <g class="link-label-group" transform="translate(${mx}, ${my - 8 * fontScale})">
       <rect class="link-label-bg" x="${-labelWidth/2}" y="-8" width="${Math.max(30 * fontScale, labelWidth)}" height="${16 * fontScale}" fill="white" stroke="#ddd" stroke-width="1" rx="4"/>
-      <text class="link-label" text-anchor="middle" dy="0.35em" font-size="${linkLabelSize}px" fill="#666">${label}</text>
+      <text class="link-label" text-anchor="middle" dy="0.35em" font-size="${linkLabelSize}px" fill="#666">${escapeXml(label)}</text>
     </g>
 `
       }
@@ -208,8 +219,8 @@ export function renderGraphToSVG(nodes, edges, settings = {}, width = 1920, heig
     
     svg += `    <g class="node" transform="translate(${node.x}, ${node.y})">
       <rect class="node-bg" x="${-maxWidth/2}" y="${nodeY}" width="${maxWidth}" height="${nodeHeight}" rx="8" fill="white" stroke="${color}" stroke-width="2"/>
-      <text class="node-label" text-anchor="middle" dy="${-4 * fontScale}" font-size="${nodeLabelSize}px" font-weight="600" fill="${color}">${truncatedLabel}</text>
-      <text class="node-content" text-anchor="middle" dy="${14 * fontScale}" font-size="${nodeContentSize}px" fill="#888">${truncatedContent}</text>
+      <text class="node-label" text-anchor="middle" dy="${-4 * fontScale}" font-size="${nodeLabelSize}px" font-weight="600" fill="${color}">${escapeXml(truncatedLabel)}</text>
+      <text class="node-content" text-anchor="middle" dy="${14 * fontScale}" font-size="${nodeContentSize}px" fill="#888">${escapeXml(truncatedContent)}</text>
     </g>
 `
   })

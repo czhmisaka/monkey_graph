@@ -6,8 +6,11 @@
 
 services:
   monkeygraph:
-    # 使用预构建镜像，不执行 build
+    # 支持镜像方式部署；若本地源码有修改，可注释 image 行并启用 build
     image: czh_graph-monkeygraph:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: monkeygraph-app
     
     # 使用 Dockerfile 中定义的 USER (nodejs, uid 1001)

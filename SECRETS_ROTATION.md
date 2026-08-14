@@ -49,7 +49,7 @@ nano .env
 # 在项目根目录
 ./start.sh
 # 或 docker
-docker compose restart app
+docker compose restart monkeygraph
 ```
 
 ### 1.4 验证
@@ -105,19 +105,19 @@ Buffer.from(ENCRYPTION_KEY.slice(0, 32).padEnd(32, '0').slice(0, 32))
 
 ```bash
 openssl rand -hex 32
-# 输出形如：9b5cd65af5a0011b7bf93f74a2be2b3eb443d4981cf0b87c0bade53d75528898
+# 输出形如：a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2
 ```
 
 ### 3.3 迁移现有数据（必须先做）
 
-数据库 `user_llm_configs.api_key_encrypted` 列当前用旧 KEY 加密。直接换 KEY 会导致所有用户的 LLM 配置无法解密。
+数据库 `user_llm_configs.api_key` 列当前用旧 KEY 加密。直接换 KEY 会导致所有用户的 LLM 配置无法解密。
 
 **方案 A: 一次性迁移脚本**（推荐）
 
-执行以下脚本（先用旧 KEY 解密，再用新 KEY 重加密）：
+执行以下脚本（先用旧 KEY 解密，再用新 KEY 重加密）——注意密文格式必须与 `database.js` 一致：GCM 格式为 `gcm1:iv:tag:ct`（4 段，前缀 `gcm1:`），旧 CBC 格式为 `iv:ct`（2 段）：
 
 ```js
-// scripts/migrate-encryption-key.js
+// backend/scripts/migrate-encryption.js
 import crypto from 'crypto';
 import Database from 'better-sqlite3';
 
@@ -130,36 +130,43 @@ if (!OLD_KEY || !NEW_KEY) {
   process.exit(1);
 }
 
+const GCM_AAD = Buffer.from('user_llm_config');
 const oldKeyBuf = Buffer.from(OLD_KEY.slice(0, 32).padEnd(32, '0').slice(0, 32));
 const newKeyBuf = Buffer.from(NEW_KEY, 'hex').subarray(0, 32);
 
 const db = new Database(DB_PATH);
-const rows = db.prepare('SELECT id, api_key_encrypted FROM user_llm_configs WHERE api_key_encrypted IS NOT NULL').all();
+const rows = db.prepare('SELECT id, api_key FROM user_llm_configs WHERE api_key IS NOT NULL AND api_key != \'\'').all();
 
-function decryptOld(blob) {
+// 兼容旧 CBC（iv:ct 2 段）与新 GCM（gcm1:iv:tag:ct 4 段）
+function decryptKey(blob) {
+  if (blob.startsWith('gcm1:')) {
+    const [, ivHex, tagHex, ctHex] = blob.split(':');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', oldKeyBuf, Buffer.from(ivHex, 'hex'));
+    decipher.setAAD(GCM_AAD);
+    decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+    return Buffer.concat([decipher.update(Buffer.from(ctHex, 'hex')), decipher.final()]).toString('utf8');
+  }
   const [ivHex, ctHex] = blob.split(':');
-  const iv = Buffer.from(ivHex, 'hex');
-  const ct = Buffer.from(ctHex, 'hex');
-  const decipher = crypto.createDecipheriv('aes-256-cbc', oldKeyBuf, iv);
-  return Buffer.concat([decipher.update(ct), decipher.final()]).toString('utf8');
+  const decipher = crypto.createDecipheriv('aes-256-cbc', oldKeyBuf, Buffer.from(ivHex, 'hex'));
+  return Buffer.concat([decipher.update(Buffer.from(ctHex, 'hex')), decipher.final()]).toString('utf8');
 }
 
 function encryptNew(plain) {
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', newKeyBuf, iv);
-  cipher.setAAD(Buffer.from('user_llm_config'));
+  cipher.setAAD(GCM_AAD);
   const ct = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
-  return `${iv.toString('hex')}:${tag.toString('hex')}:${ct.toString('hex')}`;
+  return `gcm1:${iv.toString('hex')}:${tag.toString('hex')}:${ct.toString('hex')}`;
 }
 
 const txn = db.transaction(() => {
   let ok = 0, fail = 0;
   for (const row of rows) {
     try {
-      const plain = decryptOld(row.api_key_encrypted);
+      const plain = decryptKey(row.api_key);
       const newBlob = encryptNew(plain);
-      db.prepare('UPDATE user_llm_configs SET api_key_encrypted = ? WHERE id = ?').run(newBlob, row.id);
+      db.prepare('UPDATE user_llm_configs SET api_key = ? WHERE id = ?').run(newBlob, row.id);
       ok++;
     } catch (e) {
       console.error(`[FAIL] id=${row.id}: ${e.message}`);
@@ -178,7 +185,7 @@ db.close();
 cd /Users/chenzhihan/Desktop/test/czh_graph
 OLD_ENCRYPTION_KEY=<旧的 .env 中的值> \
 NEW_ENCRYPTION_KEY=<新生成的 hex 64 字符> \
-node scripts/migrate-encryption-key.js
+node backend/scripts/migrate-encryption.js
 ```
 
 ### 3.4 验证迁移
@@ -234,13 +241,13 @@ rm backend/.env.bak-*
 
 ```bash
 # 1. 停服务
-./start.sh stop || pkill -f "node src/index.js"
+pkill -f "node src/index.js"
 
 # 2. 还原 .env
 cp .env.bak-<timestamp> .env
 
-# 3. 如果是 ENCRYPTION_KEY 出问题：恢复旧 .env 后，跑 migrate-encryption-key.js 反向迁移
-# （旧 → 新），重新启动
+# 3. 如果是 ENCRYPTION_KEY 出问题：恢复旧 .env 后，跑 backend/scripts/migrate-encryption.js 反向迁移
+# （新 → 旧，需设置 OLD_ENCRYPTION_KEY=<新密钥> NEW_ENCRYPTION_KEY=<旧密钥>）
 
 # 4. 重启
 ./start.sh

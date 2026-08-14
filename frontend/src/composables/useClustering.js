@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref, onUnmounted } from 'vue'
 import { embeddingAPI } from '../api'
 
 export function useClustering(graphData, graphPanelRef, currentGraphId, embeddingStatus) {
@@ -20,6 +20,14 @@ export function useClustering(graphData, graphPanelRef, currentGraphId, embeddin
   })
 
   let clusterProgressTimer = null
+
+  // Lifecycle: 组件卸载时自动清理定时器，防止内存泄漏
+  onUnmounted(() => {
+    if (clusterProgressTimer) {
+      clearInterval(clusterProgressTimer)
+      clusterProgressTimer = null
+    }
+  })
 
   // Cluster colors
   const clusterColors = [

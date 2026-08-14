@@ -192,11 +192,27 @@ check_env() {
     if [ ! -f "$ENV_FILE" ]; then
         print_warning ".env 文件不存在，正在创建..."
         
+        # 生成安全密钥（代码强制要求 JWT_SECRET/ENCRYPTION_KEY/ADMIN_PASSWORD，缺失会启动失败）
+        local generated_jwt="$(openssl rand -base64 32 2>/dev/null | tr -d '\n')"
+        local generated_enc="$(openssl rand -hex 32 2>/dev/null | tr -d '\n')"
+        local generated_admin_pw="$(openssl rand -base64 18 2>/dev/null | tr -d '+/=' | tr -d '\n')"
+        [ -z "$generated_jwt" ] && generated_jwt="dev-jwt-secret-$(date +%s)"
+        [ -z "$generated_enc" ] && generated_enc="dev-encryption-key-0123456789abcdef"
+        [ -z "$generated_admin_pw" ] && generated_admin_pw="Admin$(date +%s)!"
+
         cat > "$ENV_FILE" << EOF
 # MiniMax API 配置
 LLM_CLOUD_BASE_URL=https://api.minimaxi.com/v1
 LLM_CLOUD_MODEL_NAME=MiniMax-M2.5
 LLM_CLOUD_API_KEY=your_api_key_here
+
+# 安全密钥（代码强制要求，缺失将导致服务无法启动）
+JWT_SECRET=${generated_jwt}
+ENCRYPTION_KEY=${generated_enc}
+
+# 管理员账户（默认用户名 admin）
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=${generated_admin_pw}
 
 # 服务配置
 PORT=${DEPLOY_PORT}
@@ -204,7 +220,8 @@ HOST=0.0.0.0
 NODE_ENV=production
 EOF
         
-        print_warning "请编辑 $ENV_FILE 填写 API Key 后重新运行"
+        print_warning "已生成 .env 模板（含随机安全密钥与管理员密码）"
+        print_warning "请编辑 $ENV_FILE 填写 API Key，并按需修改管理员密码后重新运行"
         exit 1
     fi
     

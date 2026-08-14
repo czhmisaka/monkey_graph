@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import OpenAI from 'openai';
-import { graphOperations } from './database.js';
+import { graphOperations, nodeOperations, edgeOperations } from './database.js';
 import logger from './logger.js';
 import { initMCPClient, getMCPToolDefinitions, isMCPConnected, isMCPDegraded } from './mcpClient.js';
 import { executeTool } from './services/tools/executor.js';
@@ -680,12 +680,12 @@ export async function agentChat(messages, maxIterations = 10, sendEvent = null, 
   };
 }
 
-export async function chat(messages) {
-  return agentChat(messages, 10);  // 默认 10 轮,可被调用方覆盖
+export async function chat(messages, maxIterations = 10, graphId = null) {
+  return agentChat(messages, maxIterations, null, graphId);  // 默认 10 轮,可被调用方覆盖
 }
 
-export async function chatSync(userMessage) {
-  return chat([{ role: 'user', content: userMessage }]);
+export async function chatSync(userMessage, graphId = null) {
+  return chat([{ role: 'user', content: userMessage }], 10, graphId);
 }
 
 export { tools };

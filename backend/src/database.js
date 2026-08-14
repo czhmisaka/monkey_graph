@@ -11,7 +11,8 @@ import { EMBEDDING_CONFIG } from './services/embeddingService.js';
 import { safeJsonParse } from './utils/safeParser.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const dbPath = path.join(__dirname, '..', 'data', 'knowledge-graph.db');
+// 支持 DB_PATH 环境变量覆盖（测试隔离 / 容器部署用）；默认 backend/data/knowledge-graph.db
+const dbPath = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'knowledge-graph.db');
 
 // 获取向量维度配置（来自 embeddingService 的配置）
 const VECTOR_DIMENSIONS = EMBEDDING_CONFIG.dimensions;
@@ -44,7 +45,7 @@ const IV_LENGTH_GCM = 12; // GCM 推荐 12 字节
  * @param {string} str - 要转义的字符串
  * @returns {string} - 转义后的字符串
  */
-const escapeLikePattern = (str) => {
+export const escapeLikePattern = (str) => {
   if (!str) return '';
   return str.replace(/[%_\\]/g, '\\$&');
 };
@@ -52,7 +53,7 @@ const escapeLikePattern = (str) => {
 // 加密 API Key（AES-256-GCM 认证加密）
 // 输出格式：gcm1:<iv-hex>:<authTag-hex>:<ciphertext-hex>
 // 旧 CBC 格式为：<iv-hex>:<ciphertext-hex>（2 段）—— 通过前缀自动识别
-function encryptAPIKey(text) {
+export function encryptAPIKey(text) {
   if (!text) return '';
   try {
     const iv = crypto.randomBytes(IV_LENGTH_GCM);
@@ -62,14 +63,15 @@ function encryptAPIKey(text) {
     const tag = cipher.getAuthTag();
     return `gcm1:${iv.toString('hex')}:${tag.toString('hex')}:${ct.toString('hex')}`;
   } catch (error) {
+    // 加密失败必须抛错，绝不静默回退明文（否则破坏加密承诺）
     console.error('加密失败:', error);
-    return text;
+    throw new Error('加密失败: ' + error.message);
   }
 }
 
 // 解密 API Key。支持自动迁移旧 CBC 密文（一次性就地重加密）。
 // 返回 null 表示认证失败 / 密文损坏。
-function decryptAPIKey(text) {
+export function decryptAPIKey(text) {
   if (!text) return '';
   if (!text.startsWith('gcm1:')) {
     // 旧 CBC 格式：尝试解密并就地迁移
@@ -152,9 +154,9 @@ try {
     );
   `);
   console.log(`✅ sqlite-vec 向量索引表已创建，维度: ${VECTOR_DIMENSIONS}`);
-  
-  // 创建索引
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_vec_nodes_graph_id ON vec_nodes(graph_id);`);
+  // 注意: vec_nodes 是 sqlite-vec 虚拟表，不能在其上建普通索引
+  // （SQLite 会报 "virtual tables may not be indexed"），
+  // 图内过滤由 vec0 自身的 graph_id 约束 + 应用层过滤完成。
 } catch (error) {
   console.error('创建向量索引表失败:', error.message);
 }
@@ -1240,197 +1242,6 @@ export const vecSearchOperations = {
   }
 };
 
-// 统一的 Embedding 更新操作（事务保证节点和向量索引一致性）
-export const embeddingOperations = {
-  /**
-   * 单个节点 embedding 更新（事务）
-   * 同时更新 nodes.embedding 字段和 vec_nodes 向量索引
-   * @param {string} nodeId - 节点 ID
-   * @param {string} graphId - 图谱 ID
-   * @param {number[]} embedding - embedding 向量
-   * @returns {boolean} 更新是否成功
-   */
-  updateWithEmbedding(nodeId, graphId, embedding) {
-    try {
-      const updateNode = db.prepare(`
-        UPDATE nodes SET embedding = ?, updated_at = datetime('now') WHERE id = ?
-      `);
-      const upsertVec = db.prepare(`
-        INSERT OR REPLACE INTO vec_nodes (node_id, graph_id, embedding)
-        VALUES (?, ?, ?)
-      `);
-
-      const transaction = db.transaction(() => {
-        // 1. 更新节点的 embedding 字段
-        updateNode.run(JSON.stringify(embedding), nodeId);
-        // 2. 更新向量索引（使用 INSERT OR REPLACE 实现 upsert）
-        const embeddingArray = new Float32Array(embedding);
-        upsertVec.run(nodeId, graphId, embeddingArray.buffer);
-      });
-
-      transaction();
-      return true;
-    } catch (error) {
-      console.error('updateWithEmbedding 失败:', error);
-      return false;
-    }
-  },
-
-  /**
-   * 批量节点 embedding 更新（事务）
-   * 同时更新多个节点的 nodes.embedding 字段和 vec_nodes 向量索引
-   * @param {string} graphId - 图谱 ID
-   * @param {Array<{id: string, embedding: number[]}>} items - 节点 embedding 数据
-   * @returns {boolean} 更新是否成功
-   */
-  batchUpdateWithEmbeddings(graphId, items) {
-    if (!items || items.length === 0) return true;
-
-    try {
-      const updateNode = db.prepare(`
-        UPDATE nodes SET embedding = ?, updated_at = datetime('now') WHERE id = ?
-      `);
-      const upsertVec = db.prepare(`
-        INSERT OR REPLACE INTO vec_nodes (node_id, graph_id, embedding)
-        VALUES (?, ?, ?)
-      `);
-
-      const transaction = db.transaction((nodes) => {
-        for (const node of nodes) {
-          // 1. 更新节点的 embedding 字段
-          updateNode.run(JSON.stringify(node.embedding), node.id);
-          // 2. 更新向量索引
-          const embeddingArray = new Float32Array(node.embedding);
-          upsertVec.run(node.id, graphId, embeddingArray.buffer);
-        }
-      });
-
-      transaction(items);
-      return true;
-    } catch (error) {
-      console.error('batchUpdateWithEmbeddings 失败:', error);
-      return false;
-    }
-  },
-
-  /**
-   * 删除节点的 embedding（事务）
-   * 同时删除 nodes.embedding 字段和 vec_nodes 向量索引中的数据
-   * @param {string} nodeId - 节点 ID
-   * @returns {boolean} 删除是否成功
-   */
-  deleteEmbedding(nodeId) {
-    try {
-      const clearNode = db.prepare(`
-        UPDATE nodes SET embedding = NULL, updated_at = datetime('now') WHERE id = ?
-      `);
-      const clearVec = db.prepare(`
-        DELETE FROM vec_nodes WHERE node_id = ?
-      `);
-
-      const transaction = db.transaction(() => {
-        clearNode.run(nodeId);
-        clearVec.run(nodeId);
-      });
-
-      transaction();
-      return true;
-    } catch (error) {
-      console.error('deleteEmbedding 失败:', error);
-      return false;
-    }
-  },
-
-  /**
-   * 清空图谱的所有 embedding（事务）
-   * @param {string} graphId - 图谱 ID
-   * @returns {boolean} 删除是否成功
-   */
-  clearGraphEmbeddings(graphId) {
-    try {
-      const clearNodes = db.prepare(`
-        UPDATE nodes SET embedding = NULL WHERE graph_id = ?
-      `);
-      const clearVec = db.prepare(`
-        DELETE FROM vec_nodes WHERE graph_id = ?
-      `);
-
-      const transaction = db.transaction(() => {
-        clearNodes.run(graphId);
-        clearVec.run(graphId);
-      });
-
-      transaction();
-      return true;
-    } catch (error) {
-      console.error('clearGraphEmbeddings 失败:', error);
-      return false;
-    }
-  }
-};
-
-// 节点 Embedding 索引操作
-export const nodeEmbeddingOperations = {
-  // 保存节点 embedding 到索引表
-  save(nodeId, graphId, embedding) {
-    // 先删除旧的
-    db.prepare('DELETE FROM node_embeddings WHERE node_id = ?').run(nodeId);
-    
-    const stmt = db.prepare(`
-      INSERT INTO node_embeddings (node_id, graph_id, embedding)
-      VALUES (?, ?, ?)
-    `);
-    return stmt.run(nodeId, graphId, JSON.stringify(embedding));
-  },
-
-  // 批量保存
-  batchSave(graphId, embeddings) {
-    const deleteStmt = db.prepare('DELETE FROM node_embeddings WHERE graph_id = ?');
-    const insertStmt = db.prepare(`
-      INSERT INTO node_embeddings (node_id, graph_id, embedding)
-      VALUES (?, ?, ?)
-    `);
-    
-    const saveMany = db.transaction((items) => {
-      deleteStmt.run(graphId);
-      for (const item of items) {
-        insertStmt.run(item.nodeId, graphId, JSON.stringify(item.embedding));
-      }
-    });
-    
-    saveMany(embeddings);
-    return true;
-  },
-
-  // 获取图谱的所有 embedding
-  getByGraphId(graphId) {
-    return db.prepare('SELECT * FROM node_embeddings WHERE graph_id = ?').all(graphId);
-  },
-
-  // 获取单个节点的 embedding
-  getByNodeId(nodeId) {
-    const row = db.prepare('SELECT * FROM node_embeddings WHERE node_id = ?').get(nodeId);
-    if (row && row.embedding) {
-      try {
-        return { ...row, embedding: JSON.parse(row.embedding) };
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  },
-
-  // 删除节点的 embedding
-  delete(nodeId) {
-    return db.prepare('DELETE FROM node_embeddings WHERE node_id = ?').run(nodeId);
-  },
-
-  // 删除图谱的所有 embedding
-  deleteByGraphId(graphId) {
-    return db.prepare('DELETE FROM node_embeddings WHERE graph_id = ?').run(graphId);
-  }
-};
-
 // 边操作
 export const edgeOperations = {
   getAll() {
@@ -1604,6 +1415,7 @@ export const agentOperations = {
   create(agent) {
     const id = crypto.randomUUID();
     const apiKey = crypto.randomUUID().replace(/-/g, '');
+    const encryptedKey = encryptAPIKey(apiKey);
     const stmt = db.prepare(`
       INSERT INTO agents (id, name, description, api_key, workspace_id, tenant_id, user_id, permissions, rate_limit, monthly_quota)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -1612,7 +1424,7 @@ export const agentOperations = {
       id,
       agent.name,
       agent.description || '',
-      apiKey,
+      encryptedKey,
       agent.workspace_id || null,
       agent.tenant_id || null,
       agent.user_id || null,
@@ -1624,7 +1436,9 @@ export const agentOperations = {
       agent.rate_limit || 1000,
       agent.monthly_quota || 100000
     );
-    return agentOperations.getById(id, true);
+    // 返回时附加明文 api_key（仅创建时返回一次）
+    const created = agentOperations.getById(id);
+    return { ...created, api_key: apiKey };
   },
 
   // 根据 ID 获取 Agent
@@ -1633,16 +1447,52 @@ export const agentOperations = {
     if (agent && !includeApiKey) {
       delete agent.api_key;
     }
+    if (agent && includeApiKey && agent.api_key) {
+      // 支持旧明文（无 gcm1: 前缀且非 CBC 密文格式）与 GCM 密文
+      const decrypted = decryptAPIKey(agent.api_key);
+      agent.api_key = decrypted || agent.api_key;
+    }
     if (agent) {
       agent.permissions = JSON.parse(agent.permissions || '{}');
     }
     return agent;
   },
 
-  // 根据 API Key 获取 Agent
+  // 根据 API Key 获取 Agent（兼容 GCM 密文与旧明文存储）
   getByApiKey(apiKey) {
-    const agent = db.prepare('SELECT * FROM agents WHERE api_key = ? AND is_active = 1').get(apiKey);
+    if (!apiKey) return null;
+    // GCM 使用随机 IV，无法直接 SQL 精确匹配，需遍历解密比对
+    // （Agent 数量通常较小；同时兼容历史明文存储）
+    const candidates = db.prepare('SELECT * FROM agents WHERE is_active = 1').all();
+    let agent = null;
+    for (const cand of candidates) {
+      let matches = false;
+      if (cand.api_key && cand.api_key.startsWith('gcm1:')) {
+        try {
+          matches = decryptAPIKey(cand.api_key) === apiKey;
+        } catch {
+          matches = false;
+        }
+      } else {
+        // 旧明文存储直接比较
+        matches = cand.api_key === apiKey;
+        if (matches) {
+          // 惰性迁移：将明文升级为 GCM 密文
+          try {
+            db.prepare('UPDATE agents SET api_key = ?, updated_at = datetime(\'now\') WHERE id = ?')
+              .run(encryptAPIKey(apiKey), cand.id);
+          } catch (e) {
+            console.error('[agentOperations] 惰性加密迁移失败:', e.message);
+          }
+        }
+      }
+      if (matches) {
+        agent = cand;
+        break;
+      }
+    }
     if (agent) {
+      delete agent.api_key;  // 认证过程不需要明文 key，避免泄露
       agent.permissions = JSON.parse(agent.permissions || '{}');
     }
     return agent;
@@ -1656,7 +1506,7 @@ export const agentOperations = {
 
   // 根据用户获取 Agent 列表（用户自己创建的 Agent）
   getByUserId(userId) {
-    const agents = db.prepare('SELECT * FROM agents WHERE user_id = ? ORDER BY created_at DESC').all(userId);
+    const agents = db.prepare('SELECT id, name, description, workspace_id, tenant_id, user_id, permissions, rate_limit, monthly_quota, requests_used, is_active, created_at, updated_at FROM agents WHERE user_id = ? ORDER BY created_at DESC').all(userId);
     return agents.map(a => ({ ...a, permissions: JSON.parse(a.permissions || '{}') }));
   },
 
@@ -1810,8 +1660,11 @@ export const agentOperations = {
   // 轮换 API Key
   rotateApiKey(id) {
     const newApiKey = crypto.randomUUID().replace(/-/g, '');
-    db.prepare('UPDATE agents SET api_key = ?, updated_at = datetime(\'now\') WHERE id = ?').run(newApiKey, id);
-    return agentOperations.getById(id, true);
+    const encryptedKey = encryptAPIKey(newApiKey);
+    db.prepare('UPDATE agents SET api_key = ?, updated_at = datetime(\'now\') WHERE id = ?').run(encryptedKey, id);
+    // 返回明文 key（仅此一次）
+    const agent = agentOperations.getById(id);
+    return { ...agent, api_key: newApiKey };
   }
 };
 

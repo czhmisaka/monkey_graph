@@ -2,7 +2,26 @@ import { ref, computed, inject } from 'vue'
 import { authAPI, getCurrentUser, setCurrentUser } from '../api'
 
 export function useAuth() {
-  const auth = inject('auth')
+  const auth = inject('auth', null)
+  
+  // 降级模式：当 auth 未通过 provide 注入时的安全处理
+  if (!auth) {
+    const fallbackUser = ref(getCurrentUser())
+    
+    return {
+      isLoginMode: ref(true),
+      authForm: ref({ username: '', password: '' }),
+      authFormLoading: ref(false),
+      authError: ref(''),
+      isLoggedIn: computed(() => !!fallbackUser.value),
+      currentUser: computed(() => fallbackUser.value),
+      openAuthModal: () => console.warn('[useAuth] auth 未注入，openAuthModal 不可用'),
+      checkAuth: async () => !!fallbackUser.value,
+      handleLogin: async () => { throw new Error('auth 未注入，登录不可用') },
+      handleLogout: async () => { setCurrentUser(null); fallbackUser.value = null },
+      submitAuth: async () => { throw new Error('auth 未注入，提交不可用') }
+    }
+  }
 
   // State
   const isLoginMode = ref(true)

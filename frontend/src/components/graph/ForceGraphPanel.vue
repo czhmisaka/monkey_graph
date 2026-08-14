@@ -673,11 +673,11 @@ const initGraph = () => {
   canvas.style.width = width + 'px'
   canvas.style.height = height + 'px'
   
-  // 处理高清屏
+  // 处理高清屏：显式设置基础变换（不累加 scale，避免 resize 后 dpr 缩放重复叠加）
   const dpr = window.devicePixelRatio || 1
   canvas.width = width * dpr
   canvas.height = height * dpr
-  ctx.scale(dpr, dpr)
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   
   const nodeCount = props.nodes?.length || 0
   
@@ -902,6 +902,9 @@ const render = () => {
   const visibleNodes = getVisibleNodes()
   const visibleEdges = getVisibleEdges()
   
+  // 构建节点查找表，避免循环内 O(N) find 导致 O(N²)
+  const nodesById = new Map(nodesData.map(n => [n.id, n]))
+  
   // 应用变换
   ctx.save()
   ctx.translate(transform.x, transform.y)
@@ -914,7 +917,7 @@ const render = () => {
     const targetId = typeof edge.target === 'object' ? edge.target.id : edge.target
     
     // 查找对应的节点对象
-    const source = sourceId ? nodesData.find(n => n.id === sourceId) : null
+    const source = sourceId ? nodesById.get(sourceId) || null : null
     const target = targetId ? nodesData.find(n => n.id === targetId) : null
     
     if (!source || !target) continue
@@ -1048,7 +1051,7 @@ const render = () => {
     ctx.fillText(truncatedContent, x, y + 14)
     
     // 同步坐标
-    const dataNode = nodesData.find(n => n.id === node.id)
+    const dataNode = nodesById.get(node.id)
     if (dataNode) {
       dataNode.x = node.x
       dataNode.y = node.y
@@ -1213,7 +1216,8 @@ onMounted(() => {
       canvas.height = height * dpr
       canvas.style.width = width + 'px'
       canvas.style.height = height + 'px'
-      ctx.scale(dpr, dpr)
+      // 显式重置基础变换，而不是累加 scale，确保 dpr 缩放不重复叠加
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       
       if (simulation) {
         simulation.force('center', d3.forceCenter(width / 2, height / 2))
