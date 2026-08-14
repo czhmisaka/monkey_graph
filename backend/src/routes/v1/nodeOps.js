@@ -111,6 +111,30 @@ router.post('/graphs/:graphId/nodes', authMiddleware, (req, res) => {
   }
 });
 
+// 批量更新节点位置
+// 注意：必须在 /nodes/:id 之前注册，否则 "positions" 会被 :id 匹配
+router.put('/graphs/:graphId/nodes/positions', authMiddleware, (req, res) => {
+  try {
+    const { graphId } = req.params;
+    const { positions } = req.body;
+
+    if (!positions || !Array.isArray(positions)) {
+      return res.status(400).json({ error: '位置数据格式错误' });
+    }
+
+    // 写操作：属主校验
+    const access = graphService.assertGraphWritable(graphId, { kind: 'user', user: req.user });
+    if (access.error) {
+      return res.status(access.error.status).json({ error: access.error.message });
+    }
+
+    graphService.updateNodePositions(graphId, positions);
+    res.json({ success: true, message: '位置已保存' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 更新节点
 router.put('/graphs/:graphId/nodes/:id', authMiddleware, async (req, res) => {
   try {
@@ -211,27 +235,6 @@ router.get('/graphs/:graphId/nodes/search/:keyword', authMiddleware, (req, res) 
   }
 });
 
-// 批量更新节点位置
-router.put('/graphs/:graphId/nodes/positions', authMiddleware, (req, res) => {
-  try {
-    const { graphId } = req.params;
-    const { positions } = req.body;
-
-    if (!positions || !Array.isArray(positions)) {
-      return res.status(400).json({ error: '位置数据格式错误' });
-    }
-
-    // 写操作：属主校验
-    const access = graphService.assertGraphWritable(graphId, { kind: 'user', user: req.user });
-    if (access.error) {
-      return res.status(access.error.status).json({ error: access.error.message });
-    }
-
-    graphService.updateNodePositions(graphId, positions);
-    res.json({ success: true, message: '位置已保存' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+// 批量更新节点位置（已移至 /nodes/:id 之前注册，避免 :id 捕获 "positions"）
 
 export default router;
