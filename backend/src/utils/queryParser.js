@@ -575,11 +575,11 @@ export async function groupByType(graphId, aggField, operations) {
   return results.map(row => ({
     type: row.type,
     stats: {
-      count: row.count_result || 0,
-      sum: row.sum_result !== null ? parseFloat(row.sum_result.toFixed(2)) : null,
-      avg: row.avg_result !== null ? parseFloat(row.avg_result.toFixed(2)) : null,
-      max: row.max_result,
-      min: row.min_result
+      count: row.count_result != null ? row.count_result : 0,
+      sum: row.sum_result != null ? parseFloat(Number(row.sum_result).toFixed(2)) : null,
+      avg: row.avg_result != null ? parseFloat(Number(row.avg_result).toFixed(2)) : null,
+      max: row.max_result != null ? row.max_result : null,
+      min: row.min_result != null ? row.min_result : null
     }
   }));
 }
