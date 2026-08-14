@@ -47,7 +47,8 @@ let demoGraphsLoaded = false;
 function loadDemoGraphs() {
   if (demoGraphsLoaded) return;
 
-  const demoGraphsDir = path.join(__dirname, '..', 'data', 'demo-graphs');
+  // 从 src/routes/v1/ 到 src/data/demo-graphs 需要 ../../data
+  const demoGraphsDir = path.join(__dirname, '..', '..', 'data', 'demo-graphs');
 
   try {
     const files = fs.readdirSync(demoGraphsDir).filter(f => f.endsWith('.json'));
