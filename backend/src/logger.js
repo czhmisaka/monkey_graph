@@ -117,21 +117,26 @@ function rotateLogFile(level) {
 
 /**
  * 清理旧的日志文件
+ * 同时清理按日期命名的 .log（如 info-2026-02-01.log）与轮转备份 .log.bak
  */
 function cleanupOldLogs(level) {
   if (!config.enableFile) return;
   
   try {
     const files = fs.readdirSync(config.logDir)
-      .filter(f => f.startsWith(level) && f.endsWith('.log.bak'))
-      .map(f => ({
-        name: f,
-        path: path.join(config.logDir, f),
-        time: fs.statSync(path.join(config.logDir, f)).mtime.getTime()
-      }))
+      .filter(f => f.startsWith(level) && (f.endsWith('.log') || f.endsWith('.log.bak')))
+      .map(f => {
+        let time;
+        try {
+          time = fs.statSync(path.join(config.logDir, f)).mtime.getTime();
+        } catch {
+          time = 0;
+        }
+        return { name: f, path: path.join(config.logDir, f), time };
+      })
       .sort((a, b) => b.time - a.time);
     
-    // 删除超过保留数量的旧文件
+    // 删除超过保留数量的旧文件（含按日期命名的 .log，防止磁盘无限增长）
     if (files.length > config.maxFiles) {
       files.slice(config.maxFiles).forEach(f => {
         try {
