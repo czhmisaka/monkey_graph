@@ -8,6 +8,7 @@ import {
   OPERATORS,
   AGGREGATE_OPERATIONS
 } from '../../utils/queryParser.js';
+import { logger } from '../../logger.js';
 
 const router = express.Router();
 
@@ -38,7 +39,7 @@ router.post('/graphs/:graphId/nodes/query', authMiddleware, async (req, res) => 
 
     res.json(result);
   } catch (error) {
-    console.error('[User Query] 查询失败:', error.message);
+    logger.error('【AdvancedQuery】', '[User Query] 查询失败:', error.message);
     res.status(400).json({ error: error.message });
   }
 });
@@ -68,7 +69,7 @@ router.post('/graphs/:graphId/nodes/aggregate', authMiddleware, async (req, res)
 
     res.json(result);
   } catch (error) {
-    console.error('[User Aggregate] 聚合失败:', error.message);
+    logger.error('【AdvancedQuery】', '[User Aggregate] 聚合失败:', error.message);
     res.status(400).json({ error: error.message });
   }
 });
@@ -104,7 +105,7 @@ router.get('/graphs/:graphId/nodes/aggregate/by-type', authMiddleware, async (re
       groups: result
     });
   } catch (error) {
-    console.error('[User GroupBy] 分组聚合失败:', error.message);
+    logger.error('【AdvancedQuery】', '[User GroupBy] 分组聚合失败:', error.message);
     res.status(400).json({ error: error.message });
   }
 });
@@ -187,7 +188,7 @@ router.get('/graphs/:graphId/nodes/field-stats', authMiddleware, (req, res) => {
       fields: fieldStats
     });
   } catch (error) {
-    console.error('[User FieldStats] 获取字段统计失败:', error.message);
+    logger.error('【AdvancedQuery】', '[User FieldStats] 获取字段统计失败:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
