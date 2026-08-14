@@ -586,8 +586,11 @@ defineExpose({
 })
 
 // 获取视口内的节点（带缓冲）
+// 注意：不依赖 quadtree 裁剪——四叉树 extent 基于建立时的坐标固定，
+// 而力导向模拟持续更新节点坐标，导致索引陈旧、缩放时部分节点被错误剔除。
+// 直接遍历 nodesData（小图开销可忽略；大图本就分批渲染）。
 const getVisibleNodes = () => {
-  if (!canvas || !quadtree) return nodesData
+  if (!canvas) return nodesData
   
   const width = canvas.clientWidth
   const height = canvas.clientHeight
@@ -602,19 +605,13 @@ const getVisibleNodes = () => {
   const maxY = (-ty + height) / scale + viewportPadding
   
   const visibleNodes = []
-  quadtree.visit((node, x1, y1, x2, y2) => {
-    if (x1 > maxX || x2 < minX || y1 > maxY || y2 < minY) {
-      return true
+  for (const n of nodesData) {
+    const x = n.x
+    const y = n.y
+    if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
+      visibleNodes.push(n)
     }
-    if (!node.length && node.data) {
-      const x = node.data.x
-      const y = node.data.y
-      if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
-        visibleNodes.push(node.data)
-      }
-    }
-    return false
-  })
+  }
   
   return visibleNodes
 }
