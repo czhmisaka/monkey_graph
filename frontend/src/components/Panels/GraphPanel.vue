@@ -496,14 +496,33 @@ const resumeSimulation = () => {
   console.log('[GraphPanel] 已恢复力导向图')
 }
 
-// 使用空间索引查找节点（优化后的点击/悬停检测）
+// 查找最近的节点（点击/悬停检测）
+// 注意：不使用 spatialIndex——索引基于建立时坐标固定，力导向移动后陈旧。
+// 直接线性搜索 nodesData 实时坐标（与活跃组件一致）。
 const findNodeAtPoint = (x, y) => {
-  if (!spatialIndex || !nodesData || nodesData.length === 0) {
+  if (!nodesData || nodesData.length === 0) {
     return null
   }
   
-  // 使用四叉树查找最近的节点
-  return spatialIndex.findNodeAtPoint(x, y, 22)
+  let closestNode = null
+  let closestDist = 22 * 22
+  
+  for (const node of nodesData) {
+    if (node.x === undefined || node.y === undefined || isNaN(node.x) || isNaN(node.y)) {
+      continue
+    }
+    
+    const dx = x - node.x
+    const dy = y - node.y
+    const distSq = dx * dx + dy * dy
+    
+    if (distSq < closestDist) {
+      closestDist = distSq
+      closestNode = node
+    }
+  }
+  
+  return closestNode
 }
 
 // 获取视口内的节点
@@ -524,28 +543,17 @@ const getVisibleNodes = () => {
   const minY = (-ty / scale) - viewportPadding
   const maxY = (-ty + height) / scale + viewportPadding
   
-  // 使用空间索引获取视口内的节点
-  if (spatialIndex) {
-    return spatialIndex.getNodesInViewport({ minX, minY, maxX, maxY })
-  }
-  
-  // 后备：使用四叉树
-  if (!quadtree) return nodesData
-  
+  // 注意：不依赖 spatialIndex/quadtree 裁剪——索引基于建立时坐标固定，
+  // 力导向移动节点后索引陈旧，会导致缩放时部分节点随机消失。
+  // 直接遍历 nodesData 读取实时坐标（与 ForceGraphPanel/RadialGraphPanel 一致）。
   const visibleNodes = []
-  quadtree.visit((node, x1, y1, x2, y2) => {
-    if (x1 > maxX || x2 < minX || y1 > maxY || y2 < minY) {
-      return true
+  for (const n of nodesData) {
+    const x = n.x
+    const y = n.y
+    if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
+      visibleNodes.push(n)
     }
-    if (!node.length && node.data) {
-      const nodeX = node.data.x
-      const nodeY = node.data.y
-      if (nodeX >= minX && nodeX <= maxX && nodeY >= minY && nodeY <= maxY) {
-        visibleNodes.push(node.data)
-      }
-    }
-    return false
-  })
+  }
   
   return visibleNodes
 }

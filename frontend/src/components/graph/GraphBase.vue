@@ -68,7 +68,6 @@ let transform = d3.zoomIdentity
 // ========== 性能优化相关 ==========
 
 // 四叉树空间索引
-let quadtree = null
 
 // 视口边界（用于裁剪）
 const viewportPadding = 100
@@ -199,28 +198,13 @@ const clearHighlight = () => {
   relatedEdgeIds.value = new Set()
 }
 
-// 构建四叉树空间索引
-const buildQuadtree = () => {
-  if (nodesData.length === 0) {
-    quadtree = null
-    return
-  }
-  
-  const xMin = Math.min(...nodesData.map(n => n.x)) - 100
-  const xMax = Math.max(...nodesData.map(n => n.x)) + 100
-  const yMin = Math.min(...nodesData.map(n => n.y)) - 100
-  const yMax = Math.max(...nodesData.map(n => n.y)) + 100
-  
-  quadtree = d3.quadtree()
-    .x(d => d.x)
-    .y(d => d.y)
-    .extent([[xMin, yMin], [xMax, yMax]])
-    .addAll(nodesData)
-}
 
 // 获取视口内的节点（带缓冲）
+// 注意：不依赖 quadtree 裁剪——四叉树 extent 基于建立时的坐标固定，
+// 而力导向模拟持续更新节点坐标，导致索引陈旧、缩放时部分节点被随机剔除。
+// 直接遍历 nodesData 读取实时坐标（与 ForceGraphPanel/RadialGraphPanel 一致）。
 const getVisibleNodes = () => {
-  if (!canvas || !quadtree) return nodesData
+  if (!canvas) return nodesData
   
   const width = canvas.clientWidth
   const height = canvas.clientHeight
@@ -235,19 +219,13 @@ const getVisibleNodes = () => {
   const maxY = (-ty + height) / scale + viewportPadding
   
   const visibleNodes = []
-  quadtree.visit((node, x1, y1, x2, y2) => {
-    if (x1 > maxX || x2 < minX || y1 > maxY || y2 < minY) {
-      return true
+  for (const n of nodesData) {
+    const x = n.x
+    const y = n.y
+    if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
+      visibleNodes.push(n)
     }
-    if (!node.length && node.data) {
-      const x = node.data.x
-      const y = node.data.y
-      if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
-        visibleNodes.push(node.data)
-      }
-    }
-    return false
-  })
+  }
   
   return visibleNodes
 }
@@ -375,7 +353,6 @@ const updateGraph = () => {
   
   edgesData = props.edges.map(e => ({ ...e }))
   
-  buildQuadtree()
 }
 
 // 保存节点位置
@@ -448,7 +425,6 @@ defineExpose({
   nodePositions,
   
   // 共享方法
-  buildQuadtree,
   getVisibleNodes,
   getVisibleEdges,
   highlightNode,

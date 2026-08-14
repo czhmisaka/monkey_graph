@@ -265,8 +265,6 @@ const updateGraphWithStreamingData = () => {
   // 更新边数据
   edgesData = allEdges.map(e => ({ ...e }))
   
-  // 重新构建四叉树
-  buildQuadtree()
   
   // 更新模拟
   simulation.nodes(nodesData)
@@ -291,28 +289,12 @@ const updateStreamingEdges = () => {
 }
 
 // 构建四叉树空间索引
-const buildQuadtree = () => {
-  if (nodesData.length === 0) {
-    return
-  }
-  
-  const xMin = Math.min(...nodesData.map(n => n.x)) - 100
-  const xMax = Math.max(...nodesData.map(n => n.x)) + 100
-  const yMin = Math.min(...nodesData.map(n => n.y)) - 100
-  const yMax = Math.max(...nodesData.map(n => n.y)) + 100
-  
-  quadtree = d3.quadtree()
-    .x(d => d.x)
-    .y(d => d.y)
-    .extent([[xMin, yMin], [xMax, yMax]])
-    .addAll(nodesData)
-}
-
-let quadtree = null
-
 // 获取视口内的节点（带缓冲）
+// 注意：不依赖 quadtree 裁剪——四叉树 extent 基于建立时的坐标固定，
+// 而力导向模拟持续更新节点坐标，导致索引陈旧、缩放时部分节点被随机剔除。
+// 直接遍历 nodesData 读取实时坐标（与 ForceGraphPanel 修复一致）。
 const getVisibleNodes = () => {
-  if (!canvas || !quadtree) return nodesData
+  if (!canvas) return nodesData
   
   const width = canvas.clientWidth
   const height = canvas.clientHeight
@@ -327,19 +309,13 @@ const getVisibleNodes = () => {
   const maxY = (-ty + height) / scale + viewportPadding
   
   const visibleNodes = []
-  quadtree.visit((node, x1, y1, x2, y2) => {
-    if (x1 > maxX || x2 < minX || y1 > maxY || y2 < minY) {
-      return true
+  for (const n of nodesData) {
+    const x = n.x
+    const y = n.y
+    if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
+      visibleNodes.push(n)
     }
-    if (!node.length && node.data) {
-      const x = node.data.x
-      const y = node.data.y
-      if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
-        visibleNodes.push(node.data)
-      }
-    }
-    return false
-  })
+  }
   
   return visibleNodes
 }
@@ -357,21 +333,14 @@ const getVisibleEdges = () => {
   })
 }
 
-// 使用四叉树查找最近的节点（精确匹配渲染尺寸）
+// 查找最近的节点（精确匹配渲染尺寸）
+// 注意：不使用 quadtree.find——索引基于建立时坐标，力导向移动后陈旧，
+// 会导致点击 miss 或命中旧位置节点。直接线性搜索实时坐标。
 const findNodeAtPoint = (x, y) => {
   if (!nodesData || nodesData.length === 0) {
     return null
   }
   
-  // 使用四叉树进行高效查找
-  if (quadtree) {
-    const found = quadtree.find(x, y, HIT_RADIUS)
-    if (found) {
-      return found
-    }
-  }
-  
-  // 回退到线性搜索（使用精确的点击半径）
   let closestNode = null
   let closestDist = HIT_RADIUS * HIT_RADIUS
   
@@ -766,7 +735,6 @@ const updateGraph = () => {
   
   edgesData = props.edges.map(e => ({ ...e }))
   
-  buildQuadtree()
   
   if (simulation) {
     simulation.nodes(nodesData)
