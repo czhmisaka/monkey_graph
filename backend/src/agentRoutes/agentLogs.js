@@ -1,6 +1,7 @@
 import express from 'express';
 import { agentOperations, agentApiLogOperations, graphOperations } from '../database.js';
 import { formatError } from '../utils/responseFormatter.js';
+import { logger } from '../logger.js';
 
 const router = express.Router();
 
@@ -31,7 +32,7 @@ router.get('/user/agents/logs', async (req, res) => {
 
     // 如果用户没有创建任何 Agent，返回空数组
     if (agentIds.length === 0) {
-      console.log('[日志API] 用户没有创建任何Agent');
+      logger.info('【AgentLogs】', '[日志API] 用户没有创建任何Agent');
       return res.json({ logs: [], total: 0 });
     }
 
@@ -70,7 +71,7 @@ router.get('/user/agents/logs', async (req, res) => {
 
     res.json({ logs: logsWithGraphNames, total: logs.length });
   } catch (error) {
-    console.error('获取 Agent 日志失败:', error);
+    logger.error('【AgentLogs】', '获取 Agent 日志失败:', error);
     res.status(500).json(formatError(error.message, 'GET_AGENT_LOGS_FAILED'));
   }
 });

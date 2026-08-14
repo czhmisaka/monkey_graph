@@ -19,6 +19,7 @@ import http from 'http';
 import routes from './routes/index.js';
 import agentRoutes from './agentRoutes/index.js';
 import db from './database.js';
+import { logger } from './logger.js';
 
 const app = express();
 const PORT = process.env.PORT || 13001;
@@ -60,7 +61,7 @@ function createDefaultAdmin() {
       console.log(`✅ 管理员账户已存在: ${adminUsername}`);
     }
   } catch (error) {
-    console.error('创建管理员账户失败:', error.message);
+    logger.error('【后端】', '创建管理员账户失败:', error.message);
     throw error;
   }
 }
@@ -117,7 +118,7 @@ const corsOptions = {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      console.warn(`⚠️ CORS 拒绝: ${origin} 不在允许列表中`);
+      logger.warn('【后端】', `⚠️ CORS 拒绝: ${origin} 不在允许列表中`);
       callback(new Error('CORS: 不允许的来源'));
     }
   },
@@ -166,7 +167,7 @@ app.use((req, res, next) => {
     const hasCredentials = req.cookies?.['mg_token'] ||
       (req.headers.authorization && req.headers.authorization.startsWith('Bearer '));
     if (hasCredentials) {
-      console.warn(`[CSRF] 无 Origin 但携带凭证的非安全请求被拒绝: ${req.method} ${req.path}`);
+      logger.warn('【后端】', `[CSRF] 无 Origin 但携带凭证的非安全请求被拒绝: ${req.method} ${req.path}`);
       return res.status(403).json({ error: '跨站请求被拒绝 (CSRF)' });
     }
     return next();
@@ -185,7 +186,7 @@ app.use((req, res, next) => {
     if (allowedHosts.includes(`${url.protocol}//${url.host}`)) {
       return next();
     }
-    console.warn(`[CSRF] 拒绝来源: ${origin}`);
+    logger.warn('【后端】', `[CSRF] 拒绝来源: ${origin}`);
     return res.status(403).json({ error: '跨站请求被拒绝 (CSRF)' });
   } catch {
     return next();  // 无法解析 origin 时放行(交给 sameSite 防御)

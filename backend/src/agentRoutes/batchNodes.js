@@ -1,17 +1,11 @@
 import express from 'express';
-import { v4 as uuidv4 } from 'uuid';
-import {
-  graphOperations,
-  nodeOperations,
-  edgeOperations,
-  graphAgentPermissionOperations,
-  vecSearchOperations
-} from '../database.js';
 import { agentAuthMiddleware, requirePermission, checkPerRequestLimit } from '../agentAuth.js';
 import { requireGraphAccess } from './_helpers.js';
+import * as graphService from '../services/graphService.js';
 import { formatBatchResponse, formatItemResponse, formatError } from '../utils/responseFormatter.js';
 import { getEmbeddings, nodeToEmbeddingText, isEmbeddingServiceAvailable } from '../services/embeddingService.js';
 import { getBatchLimits } from '../config/batchConfig.js';
+import { logger } from '../logger.js';
 
 const router = express.Router();
 
@@ -25,9 +19,10 @@ router.post('/graphs/:graphId/batch/nodes', agentAuthMiddleware, requirePermissi
       return res.status(400).json(formatError('节点列表不能为空', 'MISSING_NODES'));
     }
 
-    const graph = graphOperations.getById(graphId);
-    if (!graph) {
-      return res.status(404).json(formatError('图谱不存在', 'GRAPH_NOT_FOUND'));
+    // 图谱访问校验（Agent viewer）
+    const access = graphService.assertGraphWritable(graphId, { kind: 'agent', agent: req.agent });
+    if (access.error) {
+      return res.status(access.error.status).json(formatError(access.error.message, access.error.code));
     }
 
     // 检查 per-request 限制
@@ -45,17 +40,16 @@ router.post('/graphs/:graphId/batch/nodes', agentAuthMiddleware, requirePermissi
     const createdNodes = [];
 
     for (const node of nodes) {
-      const nodeId = node.id || uuidv4();
-      const newNode = nodeOperations.createForGraph({
-        id: nodeId,
+      const newNode = graphService.createNode(graphId, {
+        id: node.id,
         label: node.label,
-        type: node.type || 'default',
-        properties: node.properties || {},
-        x: node.x || Math.random() * 800,
-        y: node.y || Math.random() * 600
-      }, graphId);
+        type: node.type,
+        properties: node.properties,
+        x: node.x,
+        y: node.y
+      });
 
-      createdNodes.push({ ...newNode, properties: JSON.parse(newNode.properties || '{}') });
+      createdNodes.push(graphService.serializeNode(newNode));
     }
 
     // 默认自动计算 Embedding
@@ -67,26 +61,19 @@ router.post('/graphs/:graphId/batch/nodes', agentAuthMiddleware, requirePermissi
           const nodeTexts = createdNodes.map(n => nodeToEmbeddingText(n));
           const embeddings = await getEmbeddings(nodeTexts);
 
-          // 批量更新 embedding
+          // 批量更新 embedding（nodes.embedding + vec_nodes 单事务同步）
           const updateData = createdNodes.map((node, index) => ({
             id: node.id,
             embedding: embeddings[index]
           })).filter(item => item.embedding);
 
-          nodeOperations.batchUpdateEmbeddings(graphId, updateData);
+          const computed = graphService.syncEmbeddings(graphId, updateData);
 
-          // 同步到向量索引
-          const items = updateData.map(item => ({
-            nodeId: item.id,
-            embedding: item.embedding
-          }));
-          vecSearchOperations.batchAddToIndex(graphId, items);
-
-          embeddingResult = { computed: updateData.length, total: createdNodes.length };
-          console.log(`[Agent] 自动计算 embedding 完成: ${updateData.length}/${createdNodes.length}`);
+          embeddingResult = { computed, total: createdNodes.length };
+          logger.info('【AgentBatch】', `[Agent] 自动计算 embedding 完成: ${computed}/${createdNodes.length}`);
         }
       } catch (embError) {
-        console.error('[Agent] 自动计算 embedding 失败:', embError.message);
+        logger.error('【AgentBatch】', '[Agent] 自动计算 embedding 失败:', embError.message);
       }
     }
 
@@ -110,9 +97,10 @@ router.put('/graphs/:graphId/batch/nodes', agentAuthMiddleware, requirePermissio
       return res.status(400).json(formatError('节点列表不能为空', 'MISSING_NODES'));
     }
 
-    const graph = graphOperations.getById(graphId);
-    if (!graph) {
-      return res.status(404).json(formatError('图谱不存在', 'GRAPH_NOT_FOUND'));
+    // 图谱访问校验（Agent viewer）
+    const access = graphService.assertGraphWritable(graphId, { kind: 'agent', agent: req.agent });
+    if (access.error) {
+      return res.status(access.error.status).json(formatError(access.error.message, access.error.code));
     }
 
     // 检查 per-request 限制
@@ -132,11 +120,10 @@ router.put('/graphs/:graphId/batch/nodes', agentAuthMiddleware, requirePermissio
     for (const node of nodes) {
       if (!node.id) continue;
 
-      const oldNode = nodeOperations.getById(node.id);
-      if (!oldNode || oldNode.graph_id !== graphId) continue;
-
-      const updated = nodeOperations.update(node.id, node);
-      updatedNodes.push({ ...updated, properties: JSON.parse(updated.properties || '{}') });
+      const result = graphService.updateNode(graphId, node.id, node);
+      if (result) {
+        updatedNodes.push(graphService.serializeNode(result.updatedNode));
+      }
     }
 
     // 精简返回
@@ -156,9 +143,10 @@ router.delete('/graphs/:graphId/batch/nodes', agentAuthMiddleware, requirePermis
       return res.status(400).json(formatError('节点 ID 列表不能为空', 'MISSING_NODE_IDS'));
     }
 
-    const graph = graphOperations.getById(graphId);
-    if (!graph) {
-      return res.status(404).json(formatError('图谱不存在', 'GRAPH_NOT_FOUND'));
+    // 图谱访问校验（Agent viewer）
+    const access = graphService.assertGraphWritable(graphId, { kind: 'agent', agent: req.agent });
+    if (access.error) {
+      return res.status(access.error.status).json(formatError(access.error.message, access.error.code));
     }
 
     // 检查 per-request 限制
@@ -176,15 +164,8 @@ router.delete('/graphs/:graphId/batch/nodes', agentAuthMiddleware, requirePermis
     let deletedCount = 0;
 
     for (const nodeId of node_ids) {
-      const node = nodeOperations.getById(nodeId);
-      if (node && node.graph_id === graphId) {
-        // 从向量索引中移除
-        try {
-          vecSearchOperations.removeFromIndex(nodeId);
-        } catch (e) {
-          // 忽略错误，继续删除
-        }
-        nodeOperations.delete(nodeId);
+      const node = graphService.deleteNode(graphId, nodeId);
+      if (node) {
         deletedCount++;
       }
     }
@@ -201,24 +182,16 @@ router.delete('/graphs/:graphId/nodes/:nodeId', agentAuthMiddleware, requirePerm
   try {
     const { graphId, nodeId } = req.params;
 
-    const graph = graphOperations.getById(graphId);
-    if (!graph) {
-      return res.status(404).json(formatError('图谱不存在', 'GRAPH_NOT_FOUND'));
+    // 图谱访问校验（Agent viewer）
+    const access = graphService.assertGraphWritable(graphId, { kind: 'agent', agent: req.agent });
+    if (access.error) {
+      return res.status(access.error.status).json(formatError(access.error.message, access.error.code));
     }
 
-    const node = nodeOperations.getById(nodeId);
-    if (!node || node.graph_id !== graphId) {
+    const node = graphService.deleteNode(graphId, nodeId);
+    if (!node) {
       return res.status(404).json(formatError('节点不存在', 'NODE_NOT_FOUND'));
     }
-
-    // 从向量索引中移除（如果存在）
-    try {
-      vecSearchOperations.removeFromIndex(nodeId);
-    } catch (e) {
-      console.log(`[Agent Node Delete] 从向量索引移除节点 ${nodeId} 失败:`, e.message);
-    }
-
-    nodeOperations.delete(nodeId);
 
     res.json({ message: '节点已删除', node_id: nodeId });
   } catch (error) {
@@ -232,17 +205,13 @@ router.put('/graphs/:graphId/nodes/:nodeId', agentAuthMiddleware, requirePermiss
     const { graphId, nodeId } = req.params;
     const { label, type, properties, x, y } = req.body;
 
-    const graph = graphOperations.getById(graphId);
-    if (!graph) {
-      return res.status(404).json(formatError('图谱不存在', 'GRAPH_NOT_FOUND'));
+    // 图谱访问校验（Agent viewer）
+    const access = graphService.assertGraphWritable(graphId, { kind: 'agent', agent: req.agent });
+    if (access.error) {
+      return res.status(access.error.status).json(formatError(access.error.message, access.error.code));
     }
 
-    const node = nodeOperations.getById(nodeId);
-    if (!node || node.graph_id !== graphId) {
-      return res.status(404).json(formatError('节点不存在', 'NODE_NOT_FOUND'));
-    }
-
-    const updated = nodeOperations.update(nodeId, {
+    const result = graphService.updateNode(graphId, nodeId, {
       label,
       type,
       properties,
@@ -250,11 +219,12 @@ router.put('/graphs/:graphId/nodes/:nodeId', agentAuthMiddleware, requirePermiss
       y
     });
 
+    if (!result) {
+      return res.status(404).json(formatError('节点不存在', 'NODE_NOT_FOUND'));
+    }
+
     res.json({
-      node: formatItemResponse({
-        ...updated,
-        properties: JSON.parse(updated.properties || '{}')
-      }, req.query, 'node')
+      node: formatItemResponse(graphService.serializeNode(result.updatedNode), req.query, 'node')
     });
   } catch (error) {
     res.status(500).json(formatError(error.message, 'UPDATE_NODE_FAILED'));

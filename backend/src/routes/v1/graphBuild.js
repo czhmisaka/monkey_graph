@@ -4,6 +4,7 @@ import { graphOperations } from '../../database.js';
 import { authMiddleware } from '../../auth.js';
 import { TaskManager } from '../../tasks/taskManager.js';
 import { LocalGraphBuilder } from '../../services/localGraphBuilder.js';
+import { logger } from '../../logger.js';
 
 const router = express.Router();
 
@@ -101,7 +102,7 @@ router.post('/graph/build', authMiddleware, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('图谱构建失败:', error);
+    logger.error('【GraphBuild】', '图谱构建失败:', error);
     res.status(500).json({ error: error.message });
   }
 });

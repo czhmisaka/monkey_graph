@@ -63,20 +63,6 @@ SQLite 数据库，使用 [sqlite-vec](https://github.com/asg017/sqlite-vec) 扩
 
 **外键**: `graph_id` -> `graphs(id)` ON DELETE CASCADE
 
-### node_embeddings - 节点 Embedding 索引表
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | INTEGER | 自增主键 |
-| node_id | TEXT | 节点 ID |
-| graph_id | TEXT | 图谱 ID |
-| embedding | TEXT | 向量 (JSON 格式) |
-| created_at | TEXT | 创建时间 |
-| updated_at | TEXT | 更新时间 |
-
-**外键**: `node_id` -> `nodes(id)` ON DELETE CASCADE
-**外键**: `graph_id` -> `graphs(id)` ON DELETE CASCADE
-
 ### edges - 边表
 
 | 字段 | 类型 | 说明 |
@@ -248,8 +234,6 @@ SQLite 数据库，使用 [sqlite-vec](https://github.com/asg017/sqlite-vec) 扩
 ### 其他索引
 - `idx_user_llm_configs_user_id` ON `user_llm_configs(user_id)`
 - `idx_graph_shares_token` ON `graph_shares(share_token)`
-- `idx_node_embeddings_node_id` ON `node_embeddings(node_id)`
-- `idx_node_embeddings_graph_id` ON `node_embeddings(graph_id)`
 - `idx_graph_agent_permissions_graph_id` ON `graph_agent_permissions(graph_id)`
 - `idx_graph_agent_permissions_agent_id` ON `graph_agent_permissions(agent_id)`
 - `idx_agents_api_key` ON `agents(api_key)`

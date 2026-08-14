@@ -2,6 +2,7 @@ import express from 'express';
 import { graphOperations, nodeOperations, vecSearchOperations } from '../../../database.js';
 import { authMiddleware } from '../../../auth.js';
 import { isEmbeddingServiceAvailable, getEmbeddingConfig, computeVectorStats } from '../../../services/embeddingService.js';
+import { logger } from '../../../logger.js';
 
 const router = express.Router();
 
@@ -32,7 +33,7 @@ router.get('/graphs/:graphId/embedding/status', authMiddleware, async (req, res)
   try {
     const { graphId } = req.params;
 
-    console.log(`[Embedding Status] 获取图谱 ${graphId} 的 embedding 状态...`);
+    logger.info('【Embedding】', `[Embedding Status] 获取图谱 ${graphId} 的 embedding 状态...`);
 
     // 验证图谱是否属于当前用户
     let graph = graphOperations.getByIdAndUserId(graphId, req.user.id);
@@ -54,21 +55,21 @@ router.get('/graphs/:graphId/embedding/status', authMiddleware, async (req, res)
     if (!graph && isAdmin) {
       graph = graphOperations.getById(graphId);
       if (!graph) {
-        console.log(`[Embedding Status] 图谱 ${graphId} 不存在`);
+        logger.info('【Embedding】', `[Embedding Status] 图谱 ${graphId} 不存在`);
         return res.status(404).json({ error: '图谱不存在' });
       }
     }
 
     // 如果仍然没有找到图谱，返回 404
     if (!graph) {
-      console.log(`[Embedding Status] 图谱 ${graphId} 不存在`);
+      logger.info('【Embedding】', `[Embedding Status] 图谱 ${graphId} 不存在`);
       return res.status(404).json({ error: '图谱不存在' });
     }
 
     // 获取所有节点
     const nodes = nodeOperations.getByGraphId(graphId);
     const totalNodes = nodes.length;
-    console.log(`[Embedding Status] 图谱 ${graphId} 共有 ${totalNodes} 个节点`);
+    logger.info('【Embedding】', `[Embedding Status] 图谱 ${graphId} 共有 ${totalNodes} 个节点`);
 
     // 统计已有 embedding 的节点数量
     const nodesWithEmbedding = nodes.filter(n => n.embedding && n.embedding.length > 0);
@@ -77,12 +78,12 @@ router.get('/graphs/:graphId/embedding/status', authMiddleware, async (req, res)
     // 计算进度
     const progress = totalNodes > 0 ? Math.round((computedNodes / totalNodes) * 100) : 0;
 
-    console.log(`[Embedding Status] 已计算 embedding: ${computedNodes}/${totalNodes} (${progress}%)`);
+    logger.info('【Embedding】', `[Embedding Status] 已计算 embedding: ${computedNodes}/${totalNodes} (${progress}%)`);
 
     // 检查 embedding 服务是否可用
     const available = await isEmbeddingServiceAvailable();
     const config = getEmbeddingConfig();
-    console.log(`[Embedding Status] Embedding 服务可用: ${available}, 配置: ${JSON.stringify(config)}`);
+    logger.info('【Embedding】', `[Embedding Status] Embedding 服务可用: ${available}, 配置: ${JSON.stringify(config)}`);
 
     res.json({
       available,
@@ -93,7 +94,7 @@ router.get('/graphs/:graphId/embedding/status', authMiddleware, async (req, res)
       isComplete: computedNodes === totalNodes && totalNodes > 0
     });
   } catch (error) {
-    console.error('[Embedding Status] 获取 embedding 状态失败:', error);
+    logger.error('【Embedding】', '[Embedding Status] 获取 embedding 状态失败:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -123,7 +124,7 @@ router.delete('/graphs/:graphId/embedding', authMiddleware, async (req, res) => 
       message: '已删除所有节点的 embedding 及向量索引'
     });
   } catch (error) {
-    console.error('删除 embedding 失败:', error);
+    logger.error('【Embedding】', '删除 embedding 失败:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -170,7 +171,7 @@ router.get('/graphs/:graphId/embedding/stats', authMiddleware, async (req, res) 
       max: stats.max.slice(0, 10)
     });
   } catch (error) {
-    console.error('获取向量统计失败:', error);
+    logger.error('【Embedding】', '获取向量统计失败:', error);
     res.status(500).json({ error: error.message });
   }
 });

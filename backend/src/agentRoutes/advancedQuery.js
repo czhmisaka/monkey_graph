@@ -12,6 +12,7 @@ import {
   OPERATORS,
   AGGREGATE_OPERATIONS
 } from '../utils/queryParser.js';
+import { logger } from '../logger.js';
 
 const router = express.Router();
 
@@ -36,7 +37,7 @@ router.post('/graphs/:graphId/nodes/rank', agentAuthMiddleware, requirePermissio
 
     res.json(result);
   } catch (error) {
-    console.error('[Rank] 排名查询失败:', error.message);
+    logger.error('【AgentQuery】', '[Rank] 排名查询失败:', error.message);
     res.status(400).json(formatError(error.message, 'RANK_FAILED'));
   }
 });
@@ -67,7 +68,7 @@ router.get('/graphs/:graphId/nodes/top', agentAuthMiddleware, requirePermission(
 
     res.json(result);
   } catch (error) {
-    console.error('[TopN] Top-N 查询失败:', error.message);
+    logger.error('【AgentQuery】', '[TopN] Top-N 查询失败:', error.message);
     res.status(400).json(formatError(error.message, 'TOP_N_FAILED'));
   }
 });
@@ -97,7 +98,7 @@ router.post('/graphs/:graphId/nodes/query', agentAuthMiddleware, requirePermissi
 
     res.json(result);
   } catch (error) {
-    console.error('[Query] 查询失败:', error.message);
+    logger.error('【AgentQuery】', '[Query] 查询失败:', error.message);
     res.status(400).json(formatError(error.message, 'QUERY_FAILED'));
   }
 });
@@ -127,7 +128,7 @@ router.post('/graphs/:graphId/nodes/aggregate', agentAuthMiddleware, requirePerm
 
     res.json(result);
   } catch (error) {
-    console.error('[Aggregate] 聚合失败:', error.message);
+    logger.error('【AgentQuery】', '[Aggregate] 聚合失败:', error.message);
     res.status(400).json(formatError(error.message, 'AGGREGATE_FAILED'));
   }
 });
@@ -163,7 +164,7 @@ router.get('/graphs/:graphId/nodes/aggregate/by-type', agentAuthMiddleware, requ
       groups: result
     });
   } catch (error) {
-    console.error('[GroupBy] 分组聚合失败:', error.message);
+    logger.error('【AgentQuery】', '[GroupBy] 分组聚合失败:', error.message);
     res.status(400).json(formatError(error.message, 'GROUP_BY_FAILED'));
   }
 });
@@ -249,7 +250,7 @@ router.get('/graphs/:graphId/nodes/field-stats', agentAuthMiddleware, requirePer
       fields: fieldStats
     });
   } catch (error) {
-    console.error('[FieldStats] 获取字段统计失败:', error.message);
+    logger.error('【AgentQuery】', '[FieldStats] 获取字段统计失败:', error.message);
     res.status(500).json(formatError(error.message, 'FIELD_STATS_FAILED'));
   }
 });

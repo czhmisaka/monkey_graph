@@ -59,9 +59,9 @@ function loadDemoGraphs() {
     });
 
     demoGraphsLoaded = true;
-    console.log(`[Demo Graphs] 已加载 ${DEMO_GRAPHS.length} 个示例图谱`);
+    logger.info('【GraphMgmt】', `[Demo Graphs] 已加载 ${DEMO_GRAPHS.length} 个示例图谱`);
   } catch (error) {
-    console.error('[Demo Graphs] 加载示例图谱失败:', error);
+    logger.error('【GraphMgmt】', '[Demo Graphs] 加载示例图谱失败:', error);
     DEMO_GRAPHS = [];
   }
 }

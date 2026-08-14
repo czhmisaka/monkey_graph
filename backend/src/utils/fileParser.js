@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { logger } from '../logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -47,11 +48,11 @@ export class FileParser {
       
       // 检查文本质量
       const qualityCheck = this.checkTextQuality(text);
-      console.log('PDF 解析质量检查:', qualityCheck);
+      logger.info('【FileParser】', 'PDF 解析质量检查:', qualityCheck);
       
       return text;
     } catch (error) {
-      console.error('PDF 解析失败:', error);
+      logger.error('【FileParser】', 'PDF 解析失败:', error);
       throw new Error(`PDF 解析失败: ${error.message}`);
     }
   }
@@ -127,7 +128,7 @@ export class FileParser {
       // 最终兜底
       return fs.readFileSync(filePath, 'utf-8');
     } catch (error) {
-      console.error('Markdown 解析失败:', error);
+      logger.error('【FileParser】', 'Markdown 解析失败:', error);
       throw new Error(`Markdown 解析失败: ${error.message}`);
     }
   }
@@ -155,7 +156,7 @@ export class FileParser {
       // 最终兜底
       return fs.readFileSync(filePath, 'utf-8', { errors: 'replace' });
     } catch (error) {
-      console.error('文本文件解析失败:', error);
+      logger.error('【FileParser】', '文本文件解析失败:', error);
       throw new Error(`文本文件解析失败: ${error.message}`);
     }
   }

@@ -2,6 +2,7 @@
  * 安全 JSON 解析工具
  * 提供安全的 JSON 解析功能，防止解析失败导致应用崩溃
  */
+import { logger } from '../logger.js';
 
 /**
  * 安全解析 JSON 字符串
@@ -17,7 +18,7 @@ export function safeJsonParse(str, defaultValue = {}) {
   try {
     return JSON.parse(str);
   } catch (error) {
-    console.warn('[safeParser] JSON 解析失败:', error.message);
+    logger.warn('【SafeParser】', '[safeParser] JSON 解析失败:', error.message);
     return defaultValue;
   }
 }
@@ -36,7 +37,7 @@ export function safeJsonStringify(obj, defaultValue = '{}') {
   try {
     return JSON.stringify(obj);
   } catch (error) {
-    console.warn('[safeParser] JSON 序列化失败:', error.message);
+    logger.warn('【SafeParser】', '[safeParser] JSON 序列化失败:', error.message);
     return defaultValue;
   }
 }

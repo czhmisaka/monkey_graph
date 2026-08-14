@@ -2,6 +2,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { logger } from '../logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -82,7 +83,7 @@ const readFileHeader = (filePath, bytesToRead = 8) => {
     fs.closeSync(fd);
     return bytesRead > 0 ? buffer.slice(0, bytesRead) : null;
   } catch (error) {
-    console.error('[Upload] 读取文件头失败:', error.message);
+    logger.error('【Upload】', '[Upload] 读取文件头失败:', error.message);
     return null;
   }
 };
@@ -158,7 +159,7 @@ const cleanupTempFile = (filePath) => {
       fs.unlinkSync(filePath);
     }
   } catch (error) {
-    console.error('[Upload] 清理临时文件失败:', error.message);
+    logger.error('【Upload】', '[Upload] 清理临时文件失败:', error.message);
   }
 };
 
@@ -171,13 +172,13 @@ export const upload = multer({
   fileFilter: (req, file, cb) => {
     // 1. 验证文件扩展名
     if (!isAllowedExtension(file.originalname)) {
-      console.warn(`[Upload] 拒绝文件：无效的扩展名 ${file.originalname}`);
+      logger.warn('【Upload】', `[Upload] 拒绝文件：无效的扩展名 ${file.originalname}`);
       return cb(new Error('不支持的文件扩展名，仅支持 PDF、MD、TXT'));
     }
     
     // 2. 验证 MIME 类型
     if (!isAllowedMimeType(file.mimetype)) {
-      console.warn(`[Upload] 拒绝文件：无效的 MIME 类型 ${file.mimetype}`);
+      logger.warn('【Upload】', `[Upload] 拒绝文件：无效的 MIME 类型 ${file.mimetype}`);
       return cb(new Error('不支持的文件类型，仅支持 PDF、MD、TXT'));
     }
     
@@ -212,7 +213,7 @@ export const verifyUploadFile = (req, res, next) => {
     const result = verifyFileMagicBytes(file.path, ext);
     
     if (!result.valid) {
-      console.warn(`[Upload] 文件魔数验证失败: ${file.originalname} - ${result.message}`);
+      logger.warn('【Upload】', `[Upload] 文件魔数验证失败: ${file.originalname} - ${result.message}`);
       // 删除不安全的文件
       cleanupTempFile(file.path);
       return res.status(400).json({ 
@@ -222,7 +223,7 @@ export const verifyUploadFile = (req, res, next) => {
       });
     }
     
-    console.log(`[Upload] 文件验证通过: ${file.originalname} - ${result.message}`);
+    logger.info('【Upload】', `[Upload] 文件验证通过: ${file.originalname} - ${result.message}`);
   }
   
   next();

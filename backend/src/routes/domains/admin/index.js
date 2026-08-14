@@ -6,6 +6,7 @@ import { userAgentOperations, agentOperations } from '../../../database.js';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { logger } from '../../../logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -59,7 +60,7 @@ router.get('/admin/tenants', authMiddleware, (req, res) => {
       }))
     });
   } catch (error) {
-    console.error('获取租户列表失败:', error);
+    logger.error('【Admin】', '获取租户列表失败:', error);
     res.status(500).json({ error: '获取租户列表失败' });
   }
 });
@@ -104,7 +105,7 @@ router.get('/admin/tenants/:id', authMiddleware, (req, res) => {
       }
     });
   } catch (error) {
-    console.error('获取租户详情失败:', error);
+    logger.error('【Admin】', '获取租户详情失败:', error);
     res.status(500).json({ error: '获取租户详情失败' });
   }
 });
@@ -131,7 +132,7 @@ router.post('/admin/tenants/:id/suspend', authMiddleware, (req, res) => {
       message: '租户已暂停'
     });
   } catch (error) {
-    console.error('暂停租户失败:', error);
+    logger.error('【Admin】', '暂停租户失败:', error);
     res.status(500).json({ error: '暂停租户失败' });
   }
 });
@@ -158,7 +159,7 @@ router.post('/admin/tenants/:id/activate', authMiddleware, (req, res) => {
       message: '租户已激活'
     });
   } catch (error) {
-    console.error('激活租户失败:', error);
+    logger.error('【Admin】', '激活租户失败:', error);
     res.status(500).json({ error: '激活租户失败' });
   }
 });
@@ -186,7 +187,7 @@ router.delete('/admin/tenants/:id', authMiddleware, (req, res) => {
       db.prepare('DELETE FROM subscriptions WHERE tenant_id = ?').run(id);
       db.prepare('DELETE FROM tenants WHERE id = ?').run(id);
     } catch (e) {
-      console.log('删除租户关联数据失败:', e.message);
+      logger.info('【Admin】', '删除租户关联数据失败:', e.message);
     }
 
     res.json({
@@ -194,7 +195,7 @@ router.delete('/admin/tenants/:id', authMiddleware, (req, res) => {
       message: '租户已删除'
     });
   } catch (error) {
-    console.error('删除租户失败:', error);
+    logger.error('【Admin】', '删除租户失败:', error);
     res.status(500).json({ error: '删除租户失败' });
   }
 });
@@ -311,7 +312,7 @@ router.get('/plans', (req, res) => {
 
     res.json(plans);
   } catch (error) {
-    console.error('获取套餐列表失败:', error);
+    logger.error('【Admin】', '获取套餐列表失败:', error);
     res.status(500).json({ error: '获取套餐列表失败' });
   }
 });
@@ -356,7 +357,7 @@ router.get('/tenant/me', authMiddleware, (req, res) => {
       }
     });
   } catch (error) {
-    console.error('获取租户信息失败:', error);
+    logger.error('【Admin】', '获取租户信息失败:', error);
     res.json({
       tenant: {
         id: req.user.id,
@@ -412,7 +413,7 @@ router.post('/tenant/change-plan', authMiddleware, (req, res) => {
       plan: plan.slug
     });
   } catch (error) {
-    console.error('更改套餐失败:', error);
+    logger.error('【Admin】', '更改套餐失败:', error);
     res.status(500).json({ error: '更改套餐失败' });
   }
 });
@@ -471,7 +472,7 @@ router.get('/usage/current', authMiddleware, (req, res) => {
       }
     });
   } catch (error) {
-    console.error('获取使用量失败:', error);
+    logger.error('【Admin】', '获取使用量失败:', error);
     res.json({
       plan: 'free',
       period: new Date().toISOString().slice(0, 7),
@@ -854,7 +855,7 @@ function updateStatsCache() {
       const stats = fs.statSync(dbPath);
       databaseSize = stats.size;
     } catch (e) {
-      console.log('[Stats Cache] 无法获取数据库文件大小:', e.message);
+      logger.info('【Admin】', '[Stats Cache] 无法获取数据库文件大小:', e.message);
     }
 
     statsCache = {
@@ -866,9 +867,9 @@ function updateStatsCache() {
       updatedAt: new Date().toISOString()
     };
 
-    console.log(`[Stats Cache] 统计已更新: 用户=${userCount}, 图谱=${graphCount}, 节点=${nodeCount}, 边=${edgeCount}, 数据库大小=${(databaseSize / 1024 / 1024).toFixed(2)}MB`);
+    logger.info('【Admin】', `[Stats Cache] 统计已更新: 用户=${userCount}, 图谱=${graphCount}, 节点=${nodeCount}, 边=${edgeCount}, 数据库大小=${(databaseSize / 1024 / 1024).toFixed(2)}MB`);
   } catch (error) {
-    console.error('[Stats Cache] 更新统计缓存失败:', error);
+    logger.error('【Admin】', '[Stats Cache] 更新统计缓存失败:', error);
   }
 }
 
@@ -885,7 +886,7 @@ router.get('/stats/global', (req, res) => {
   try {
     res.json(statsCache);
   } catch (error) {
-    console.error('获取全局统计失败:', error);
+    logger.error('【Admin】', '获取全局统计失败:', error);
     res.status(500).json({ error: '获取统计数据失败' });
   }
 });
@@ -908,7 +909,7 @@ router.post('/stats/global/refresh', authMiddleware, (req, res) => {
       ...statsCache
     });
   } catch (error) {
-    console.error('刷新全局统计失败:', error);
+    logger.error('【Admin】', '刷新全局统计失败:', error);
     res.status(500).json({ error: '刷新统计数据失败' });
   }
 });

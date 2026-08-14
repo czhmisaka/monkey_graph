@@ -5,21 +5,16 @@
 
 import { logger } from '../logger.js';
 import { vecSearchOperations } from '../database.js';
+import { EMBEDDING_CONFIG } from '../config/embedding.js';
 
-// 配置 - 向量维度从环境变量读取，默认 2560 (qwen3-embedding-4b)
-const EMBEDDING_CONFIG = {
-  url: process.env.EMBEDDING_URL || 'http://127.0.0.1:1234',
-  model: process.env.EMBEDDING_MODEL || 'text-embedding-qwen3-embedding-4b',
-  dimensions: parseInt(process.env.EMBEDDING_DIMENSIONS) || 2560, // 向量维度，可通过环境变量配置
-  batchSize: 32, // 批量处理的批次大小
-  useVecIndex: true, // 是否使用 sqlite-vec 索引
-  maxRetries: 3, // 最大重试次数
-  retryDelay: 1000, // 重试延迟(ms)
-  autoDetectDimensions: true // 是否自动检测向量维度
-};
+// 输入清理：限制文本长度，移除控制字符
+const MAX_TEXT_LENGTH = 8000;
+const CONTROL_CHARS_REGEX = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g;
 
-// 导出配置供其他模块使用（如 database.js）
-export { EMBEDDING_CONFIG };
+function sanitizeText(text) {
+  if (typeof text !== 'string') return '';
+  return text.slice(0, MAX_TEXT_LENGTH).replace(CONTROL_CHARS_REGEX, '');
+}
 
 /**
  * 调用本地 embedding API 获取文本向量
@@ -27,14 +22,15 @@ export { EMBEDDING_CONFIG };
  * @returns {Promise<number[]>} embedding 向量
  */
 export async function getEmbedding(text) {
-  if (!text || !text.trim()) {
+  const sanitized = sanitizeText(text);
+  if (!sanitized) {
     logger.warn('[Embedding API] 输入文本为空');
     return null;
   }
 
   try {
     logger.info(`[Embedding API] 正在调用 embedding API, 模型: ${EMBEDDING_CONFIG.model}, URL: ${EMBEDDING_CONFIG.url}`);
-    logger.info(`[Embedding API] 输入文本: ${text.trim().slice(0, 100)}...`);
+    logger.info(`[Embedding API] 输入文本: ${sanitized.slice(0, 100)}...`);
     
     const response = await fetch(`${EMBEDDING_CONFIG.url}/v1/embeddings`, {
       method: 'POST',
@@ -43,7 +39,7 @@ export async function getEmbedding(text) {
       },
       body: JSON.stringify({
         model: EMBEDDING_CONFIG.model,
-        input: text.trim()
+        input: sanitized
       })
     });
 

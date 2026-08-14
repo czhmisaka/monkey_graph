@@ -7,6 +7,7 @@ import {
   autoDetectDimensions,
   isEmbeddingServiceAvailable
 } from '../../services/embeddingService.js';
+import { logger } from '../../logger.js';
 
 const router = express.Router();
 
@@ -20,13 +21,13 @@ const router = express.Router();
  */
 router.get('/embedding/dimensions/detect', authMiddleware, async (req, res) => {
   try {
-    console.log('[Dimension Detection] 开始自动检测向量维度...');
+    logger.info('【VectorConfig】', '[Dimension Detection] 开始自动检测向量维度...');
 
     // 调用 embedding API 检测维度
     const detectedDimensions = await autoDetectDimensions();
 
     if (detectedDimensions === null) {
-      console.error('[Dimension Detection] 向量维度检测失败');
+      logger.error('【VectorConfig】', '[Dimension Detection] 向量维度检测失败');
       return res.status(503).json({
         success: false,
         error: '无法连接到 embedding 服务，请确保本地 embedding 服务正在运行'
@@ -34,7 +35,7 @@ router.get('/embedding/dimensions/detect', authMiddleware, async (req, res) => {
     }
 
     const config = getVectorConfig();
-    console.log(`[Dimension Detection] ✅ 检测成功: ${detectedDimensions} 维 (当前配置: ${config.dimensions} 维)`);
+    logger.info('【VectorConfig】', `[Dimension Detection] ✅ 检测成功: ${detectedDimensions} 维 (当前配置: ${config.dimensions} 维)`);
 
     res.json({
       success: true,
@@ -48,7 +49,7 @@ router.get('/embedding/dimensions/detect', authMiddleware, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('[Dimension Detection] 向量维度检测失败:', error);
+    logger.error('【VectorConfig】', '[Dimension Detection] 向量维度检测失败:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -64,13 +65,13 @@ router.post('/embedding/dimensions/reinit', authMiddleware, async (req, res) => 
   try {
     const { dimensions } = req.body;
 
-    console.log(`[VecIndex Reinit] 收到重新初始化请求...`);
+    logger.info('【VectorConfig】', `[VecIndex Reinit] 收到重新初始化请求...`);
 
     // 1. 首先检测实际的向量维度
     const detectedDimensions = await autoDetectDimensions();
 
     if (detectedDimensions === null) {
-      console.error('[VecIndex Reinit] 无法检测向量维度');
+      logger.error('【VectorConfig】', '[VecIndex Reinit] 无法检测向量维度');
       return res.status(503).json({
         success: false,
         error: '无法连接到 embedding 服务，请确保本地 embedding 服务正在运行'
@@ -80,12 +81,12 @@ router.post('/embedding/dimensions/reinit', authMiddleware, async (req, res) => 
     // 使用检测到的维度或请求中指定的维度
     const targetDimensions = dimensions || detectedDimensions;
 
-    console.log(`[VecIndex Reinit] 目标维度: ${targetDimensions}`);
+    logger.info('【VectorConfig】', `[VecIndex Reinit] 目标维度: ${targetDimensions}`);
 
     // 2. 检查是否需要重新初始化（维度是否变化）
     const currentConfig = getVectorConfig();
     if (currentConfig.dimensions === targetDimensions) {
-      console.log(`[VecIndex Reinit] 维度未变化 (${targetDimensions})，无需重新初始化`);
+      logger.info('【VectorConfig】', `[VecIndex Reinit] 维度未变化 (${targetDimensions})，无需重新初始化`);
       return res.json({
         success: true,
         message: `向量维度未变化 (${targetDimensions})，无需重新初始化`,
@@ -95,18 +96,18 @@ router.post('/embedding/dimensions/reinit', authMiddleware, async (req, res) => 
     }
 
     // 3. 重新初始化向量索引表
-    console.log(`[VecIndex Reinit] 开始重新初始化向量索引表，维度: ${targetDimensions}`);
+    logger.info('【VectorConfig】', `[VecIndex Reinit] 开始重新初始化向量索引表，维度: ${targetDimensions}`);
     const result = vecSearchOperations.reinitializeIndex(targetDimensions);
 
     if (!result) {
-      console.error('[VecIndex Reinit] 重新初始化失败');
+      logger.error('【VectorConfig】', '[VecIndex Reinit] 重新初始化失败');
       return res.status(500).json({
         success: false,
         error: '重新初始化向量索引表失败'
       });
     }
 
-    console.log(`[VecIndex Reinit] ✅ 重新初始化成功`);
+    logger.info('【VectorConfig】', `[VecIndex Reinit] ✅ 重新初始化成功`);
 
     res.json({
       success: true,
@@ -117,7 +118,7 @@ router.post('/embedding/dimensions/reinit', authMiddleware, async (req, res) => 
       warning: '向量索引已清空，请重新计算所有节点的 embedding'
     });
   } catch (error) {
-    console.error('[VecIndex Reinit] 重新初始化失败:', error);
+    logger.error('【VectorConfig】', '[VecIndex Reinit] 重新初始化失败:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -149,7 +150,7 @@ router.get('/embedding/dimensions/info', authMiddleware, async (req, res) => {
       needsReinit: detectedDimensions !== null && detectedDimensions !== config.dimensions
     });
   } catch (error) {
-    console.error('[Dimension Info] 获取维度信息失败:', error);
+    logger.error('【VectorConfig】', '[Dimension Info] 获取维度信息失败:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -162,13 +163,13 @@ router.get('/embedding/dimensions/info', authMiddleware, async (req, res) => {
  */
 router.post('/embedding/dimensions/auto-adapter', authMiddleware, async (req, res) => {
   try {
-    console.log('[Auto Adapter] 开始自动适配向量维度...');
+    logger.info('【VectorConfig】', '[Auto Adapter] 开始自动适配向量维度...');
 
     // 1. 检测实际的向量维度
     const detectedDimensions = await autoDetectDimensions();
 
     if (detectedDimensions === null) {
-      console.error('[Auto Adapter] 无法检测向量维度');
+      logger.error('【VectorConfig】', '[Auto Adapter] 无法检测向量维度');
       return res.status(503).json({
         success: false,
         error: '无法连接到 embedding 服务，请确保本地 embedding 服务正在运行'
@@ -179,7 +180,7 @@ router.post('/embedding/dimensions/auto-adapter', authMiddleware, async (req, re
 
     // 2. 比较维度
     if (currentConfig.dimensions === detectedDimensions) {
-      console.log(`[Auto Adapter] 维度匹配，无需调整 (${detectedDimensions})`);
+      logger.info('【VectorConfig】', `[Auto Adapter] 维度匹配，无需调整 (${detectedDimensions})`);
       return res.json({
         success: true,
         message: `向量维度匹配，无需调整`,
@@ -188,21 +189,21 @@ router.post('/embedding/dimensions/auto-adapter', authMiddleware, async (req, re
       });
     }
 
-    console.log(`[Auto Adapter] 维度不匹配: 当前 ${currentConfig.dimensions}，检测到 ${detectedDimensions}`);
-    console.log(`[Auto Adapter] 开始重新初始化向量索引表...`);
+    logger.info('【VectorConfig】', `[Auto Adapter] 维度不匹配: 当前 ${currentConfig.dimensions}，检测到 ${detectedDimensions}`);
+    logger.info('【VectorConfig】', `[Auto Adapter] 开始重新初始化向量索引表...`);
 
     // 3. 重新初始化向量索引表
     const result = vecSearchOperations.reinitializeIndex(detectedDimensions);
 
     if (!result) {
-      console.error('[Auto Adapter] 重新初始化失败');
+      logger.error('【VectorConfig】', '[Auto Adapter] 重新初始化失败');
       return res.status(500).json({
         success: false,
         error: '重新初始化向量索引表失败'
       });
     }
 
-    console.log(`[Auto Adapter] ✅ 自动适配完成`);
+    logger.info('【VectorConfig】', `[Auto Adapter] ✅ 自动适配完成`);
 
     res.json({
       success: true,
@@ -213,7 +214,7 @@ router.post('/embedding/dimensions/auto-adapter', authMiddleware, async (req, re
       warning: '向量索引已清空，请重新计算所有节点的 embedding'
     });
   } catch (error) {
-    console.error('[Auto Adapter] 自动适配失败:', error);
+    logger.error('【VectorConfig】', '[Auto Adapter] 自动适配失败:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -230,7 +231,7 @@ router.get('/embedding/config', authMiddleware, (req, res) => {
       config
     });
   } catch (error) {
-    console.error('获取配置失败:', error);
+    logger.error('【VectorConfig】', '获取配置失败:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -266,7 +267,7 @@ router.put('/embedding/config', authMiddleware, async (req, res) => {
       config: getVectorConfig()
     });
   } catch (error) {
-    console.error('更新配置失败:', error);
+    logger.error('【VectorConfig】', '更新配置失败:', error);
     res.status(500).json({ error: error.message });
   }
 });

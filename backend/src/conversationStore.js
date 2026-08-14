@@ -1,4 +1,5 @@
 import Redis from 'ioredis';
+import { logger } from './logger.js';
 
 // 本地存储 AbortController（无法序列化到 Redis）
 const localAbortControllers = new Map();
@@ -11,7 +12,7 @@ function initRedis() {
   const redisUrl = process.env.REDIS_URL;
 
   if (!redisUrl) {
-    console.log('[ConversationStore] REDIS_URL not configured, using in-memory store');
+    logger.info('【ConversationStore】', '[ConversationStore] REDIS_URL not configured, using in-memory store');
     return false;
   }
 
@@ -22,23 +23,23 @@ function initRedis() {
     });
 
     redisClient.on('error', (err) => {
-      console.error('[ConversationStore] Redis error:', err.message);
+      logger.error('【ConversationStore】', '[ConversationStore] Redis error:', err.message);
       useRedis = false;
     });
 
     redisClient.on('connect', () => {
-      console.log('[ConversationStore] Connected to Redis');
+      logger.info('【ConversationStore】', '[ConversationStore] Connected to Redis');
       useRedis = true;
     });
 
     // 尝试连接
     redisClient.connect().catch((err) => {
-      console.error('[ConversationStore] Redis connection failed:', err.message);
+      logger.error('【ConversationStore】', '[ConversationStore] Redis connection failed:', err.message);
     });
 
     return true;
   } catch (error) {
-    console.error('[ConversationStore] Failed to initialize Redis:', error.message);
+    logger.error('【ConversationStore】', '[ConversationStore] Failed to initialize Redis:', error.message);
     return false;
   }
 }
@@ -74,7 +75,7 @@ export async function registerConversation(graphId, userId, abortController) {
       // 设置过期时间 1 小时，防止僵尸对话
       await redisClient.expire(key, 3600);
     } catch (error) {
-      console.error('[ConversationStore] Redis register error:', error.message);
+      logger.error('【ConversationStore】', '[ConversationStore] Redis register error:', error.message);
     }
   }
 }
@@ -96,7 +97,7 @@ export function cancelConversation(graphId, userId) {
     // 标记 Redis 状态
     if (useRedis && redisClient) {
       redisClient.hset(key, 'status', 'cancelled').catch((err) => {
-        console.error('[ConversationStore] Redis cancel mark error:', err.message);
+        logger.error('【ConversationStore】', '[ConversationStore] Redis cancel mark error:', err.message);
       });
     }
 
@@ -121,7 +122,7 @@ export async function clearConversation(graphId, userId) {
     try {
       await redisClient.del(key);
     } catch (error) {
-      console.error('[ConversationStore] Redis clear error:', error.message);
+      logger.error('【ConversationStore】', '[ConversationStore] Redis clear error:', error.message);
     }
   }
 }
@@ -140,7 +141,7 @@ export async function isConversationCancelled(graphId, userId) {
       const status = await redisClient.hget(key, 'status');
       return status === 'cancelled';
     } catch (error) {
-      console.error('[ConversationStore] Redis check error:', error.message);
+      logger.error('【ConversationStore】', '[ConversationStore] Redis check error:', error.message);
     }
   }
 

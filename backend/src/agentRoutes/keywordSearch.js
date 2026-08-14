@@ -2,6 +2,7 @@ import express from 'express';
 import { graphOperations, nodeOperations, graphAgentPermissionOperations } from '../database.js';
 import { agentAuthMiddleware, requirePermission } from '../agentAuth.js';
 import { formatError } from '../utils/responseFormatter.js';
+import { logger } from '../logger.js';
 
 const router = express.Router();
 
@@ -131,7 +132,7 @@ router.get('/graphs/:graphId/nodes/search', agentAuthMiddleware, requirePermissi
     });
 
   } catch (error) {
-    console.error('关键词搜索失败:', error);
+    logger.error('【AgentKeyword】', '关键词搜索失败:', error);
     res.status(500).json(formatError(error.message, 'SEARCH_FAILED'));
   }
 });

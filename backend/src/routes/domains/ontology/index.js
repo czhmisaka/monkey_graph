@@ -9,6 +9,7 @@ import { FileParser } from '../../../utils/fileParser.js';
 import { TextProcessor } from '../../../services/textProcessor.js';
 import { OntologyGenerator } from '../../../services/ontologyGenerator.js';
 import { upload } from '../../_upload.js';
+import { logger } from '../../../logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -49,47 +50,47 @@ router.post('/graph/ontology/generate', authMiddleware, uploadRateLimiter, uploa
     }
 
     // 1. 解析文件提取文本
-    console.log(`[本体生成] 收到 ${req.files.length} 个文件，开始解析...`);
+    logger.info('【Ontology】', `[本体生成] 收到 ${req.files.length} 个文件，开始解析...`);
     const documentTexts = [];
     const fileInfos = [];
 
     for (const file of req.files) {
       try {
-        console.log(`[本体生成] 解析文件: ${file.originalname} (${(file.size / 1024).toFixed(1)}KB)`);
+        logger.info('【Ontology】', `[本体生成] 解析文件: ${file.originalname} (${(file.size / 1024).toFixed(1)}KB)`);
         const text = await FileParser.extractText(file.path);
         const processedText = TextProcessor.preprocessText(text);
 
         if (processedText.trim()) {
           documentTexts.push(processedText);
           fileInfos.push(FileParser.getFileInfo(file));
-          console.log(`[本体生成] ✓ ${file.originalname} - 提取 ${processedText.length} 字符`);
+          logger.info('【Ontology】', `[本体生成] ✓ ${file.originalname} - 提取 ${processedText.length} 字符`);
         }
 
         // 清理上传的临时文件
         fs.unlinkSync(file.path);
       } catch (parseError) {
-        console.error(`[本体生成] ✗ 文件解析失败: ${file.originalname}`, parseError.message);
+        logger.error('【Ontology】', `[本体生成] ✗ 文件解析失败: ${file.originalname}`, parseError.message);
         // 继续处理其他文件
       }
     }
 
     if (documentTexts.length === 0) {
-      console.error('[本体生成] ✗ 无法从上传的文件中提取有效文本');
+      logger.error('【Ontology】', '[本体生成] ✗ 无法从上传的文件中提取有效文本');
       sendEvent({ type: 'error', message: '无法从上传的文件中提取有效文本' });
       return res.end();
     }
 
     const totalTextLength = documentTexts.join('').length;
-    console.log(`[本体生成] ✓ 共提取 ${documentTexts.length} 个文档，总计 ${totalTextLength} 字符`);
+    logger.info('【Ontology】', `[本体生成] ✓ 共提取 ${documentTexts.length} 个文档，总计 ${totalTextLength} 字符`);
 
     // 2. 生成项目 ID
     const projectId = `proj_${uuidv4().replace(/-/g, '').slice(0, 12)}`;
     const projectName = project_name || '未命名项目';
-    console.log(`[本体生成] 项目ID: ${projectId}, 项目名称: ${projectName}`);
-    console.log(`[本体生成] 需求: ${simulation_requirement?.slice(0, 50)}...`);
+    logger.info('【Ontology】', `[本体生成] 项目ID: ${projectId}, 项目名称: ${projectName}`);
+    logger.info('【Ontology】', `[本体生成] 需求: ${simulation_requirement?.slice(0, 50)}...`);
 
     // 3. 使用 LLM 生成本体（显示进度）
-    console.log('[本体生成] 🚀 开始调用 LLM 分析文档...');
+    logger.info('【Ontology】', '[本体生成] 🚀 开始调用 LLM 分析文档...');
     sendEvent({ type: 'progress', message: '🔄 正在调用 LLM 分析文档...', progress: 0.1 });
 
     const ontology = await OntologyGenerator.generate(
@@ -100,7 +101,7 @@ router.post('/graph/ontology/generate', authMiddleware, uploadRateLimiter, uploa
 
     const entityCount = ontology.entity_types?.length || 0;
     const edgeCount = ontology.edge_types?.length || 0;
-    console.log(`[本体生成] ✅ 本体生成完成! 实体类型: ${entityCount}, 关系类型: ${edgeCount}`);
+    logger.info('【Ontology】', `[本体生成] ✅ 本体生成完成! 实体类型: ${entityCount}, 关系类型: ${edgeCount}`);
 
     sendEvent({
       type: 'progress',
@@ -126,7 +127,7 @@ router.post('/graph/ontology/generate', authMiddleware, uploadRateLimiter, uploa
 
     res.end();
   } catch (error) {
-    console.error('本体生成失败:', error);
+    logger.error('【Ontology】', '本体生成失败:', error);
     sendEvent({ type: 'error', message: error.message });
     res.end();
   }

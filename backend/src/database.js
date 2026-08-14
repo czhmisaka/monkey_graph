@@ -9,6 +9,7 @@ import crypto from 'crypto';
 import * as vec from 'sqlite-vec';
 import { EMBEDDING_CONFIG } from './config/embedding.js';
 import { safeJsonParse } from './utils/safeParser.js';
+import { logger } from './logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // 支持 DB_PATH 环境变量覆盖（测试隔离 / 容器部署用）；默认 backend/data/knowledge-graph.db
@@ -64,7 +65,7 @@ export function encryptAPIKey(text) {
     return `gcm1:${iv.toString('hex')}:${tag.toString('hex')}:${ct.toString('hex')}`;
   } catch (error) {
     // 加密失败必须抛错，绝不静默回退明文（否则破坏加密承诺）
-    console.error('加密失败:', error);
+    logger.error('【Database】', '加密失败:', error);
     throw new Error('加密失败: ' + error.message);
   }
 }
@@ -78,7 +79,7 @@ export function decryptAPIKey(text) {
     try {
       const parts = text.split(':');
       if (parts.length !== 2) {
-        console.warn('[decryptAPIKey] 非 GCM 格式且非 CBC 格式 (parts !== 2)');
+        logger.warn('【Database】', '[decryptAPIKey] 非 GCM 格式且非 CBC 格式 (parts !== 2)');
         return null;
       }
       const iv = Buffer.from(parts[0], 'hex');
@@ -86,17 +87,17 @@ export function decryptAPIKey(text) {
       const decipher = crypto.createDecipheriv('aes-256-cbc', KEY_BUF, iv);
       const plain = Buffer.concat([decipher.update(ctBuf), decipher.final()]).toString('utf8');
       // 就地升级为 GCM 格式（基于调用栈外层做 UPDATE）
-      console.warn(`[decryptAPIKey] 检测到旧 CBC 密文,迁移至 GCM`);
+      logger.warn('【Database】', `[decryptAPIKey] 检测到旧 CBC 密文,迁移至 GCM`);
       return { __migrate: plain };
     } catch (error) {
-      console.error('[decryptAPIKey] 旧 CBC 解密失败:', error.message);
+      logger.error('【Database】', '[decryptAPIKey] 旧 CBC 解密失败:', error.message);
       return null;
     }
   }
   try {
     const parts = text.split(':');
     if (parts.length !== 4) {
-      console.warn('[decryptAPIKey] GCM 格式错误 (parts !== 4)');
+      logger.warn('【Database】', '[decryptAPIKey] GCM 格式错误 (parts !== 4)');
       return null;
     }
     const iv = Buffer.from(parts[1], 'hex');
@@ -108,7 +109,7 @@ export function decryptAPIKey(text) {
     const plain = Buffer.concat([decipher.update(ctBuf), decipher.final()]).toString('utf8');
     return plain;
   } catch (error) {
-    console.error('[decryptAPIKey] GCM 解密失败 (可能被篡改):', error.message);
+    logger.error('【Database】', '[decryptAPIKey] GCM 解密失败 (可能被篡改):', error.message);
     return null;
   }
 }
@@ -136,7 +137,7 @@ try {
   const version = db.prepare('SELECT vec_version() as v').get();
   console.log('   版本:', version?.v);
 } catch (error) {
-  console.error('加载 sqlite-vec 扩展失败:', error.message);
+  logger.error('【Database】', '加载 sqlite-vec 扩展失败:', error.message);
 }
 
 // 启用 WAL 模式优化性能
@@ -158,7 +159,7 @@ try {
   // （SQLite 会报 "virtual tables may not be indexed"），
   // 图内过滤由 vec0 自身的 graph_id 约束 + 应用层过滤完成。
 } catch (error) {
-  console.error('创建向量索引表失败:', error.message);
+  logger.error('【Database】', '创建向量索引表失败:', error.message);
 }
 
 // 初始化数据库表
@@ -230,21 +231,6 @@ db.exec(`
     FOREIGN KEY (graph_id) REFERENCES graphs(id) ON DELETE CASCADE
   );
   
-  -- 节点 Embedding 索引表（用于加速相似度搜索）
-  CREATE TABLE IF NOT EXISTS node_embeddings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    node_id TEXT NOT NULL,
-    graph_id TEXT NOT NULL,
-    embedding TEXT NOT NULL,
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE,
-    FOREIGN KEY (graph_id) REFERENCES graphs(id) ON DELETE CASCADE
-  );
-  
-  CREATE INDEX IF NOT EXISTS idx_node_embeddings_node_id ON node_embeddings(node_id);
-  CREATE INDEX IF NOT EXISTS idx_node_embeddings_graph_id ON node_embeddings(graph_id);
-
   -- 边表
   CREATE TABLE IF NOT EXISTS edges (
     id TEXT PRIMARY KEY,
@@ -589,10 +575,10 @@ export const userLLMConfigOperations = {
       try {
         const newBlob = reencryptAPIKey(result.__migrate);
         db.prepare('UPDATE user_llm_configs SET api_key = ? WHERE id = ?').run(newBlob, config.id);
-        console.log(`[getDecryptedApiKey] id=${config.id} 已从 CBC 迁移至 GCM`);
+        logger.info('【Database】', `[getDecryptedApiKey] id=${config.id} 已从 CBC 迁移至 GCM`);
         return result.__migrate;
       } catch (e) {
-        console.error(`[getDecryptedApiKey] 迁移失败 id=${config.id}:`, e.message);
+        logger.error('【Database】', `[getDecryptedApiKey] 迁移失败 id=${config.id}:`, e.message);
         return result.__migrate;
       }
     }
@@ -1102,11 +1088,11 @@ export const vecSearchOperations = {
             embedding FLOAT[${dimensions}]
           );
         `);
-        console.log(`✅ sqlite-vec 向量索引表已创建，维度: ${dimensions}`);
+        logger.info('【Database】', `✅ sqlite-vec 向量索引表已创建，维度: ${dimensions}`);
       }
       return true;
     } catch (error) {
-      console.error('初始化向量索引失败:', error);
+      logger.error('【Database】', '初始化向量索引失败:', error);
       return false;
     }
   },
@@ -1116,7 +1102,7 @@ export const vecSearchOperations = {
     try {
       // 删除旧表
       db.exec(`DROP TABLE IF EXISTS vec_nodes;`);
-      console.log('已删除旧的向量索引表');
+      logger.info('【Database】', '已删除旧的向量索引表');
       
       // 重新创建
       db.exec(`
@@ -1126,10 +1112,10 @@ export const vecSearchOperations = {
           embedding FLOAT[${dimensions}]
         );
       `);
-      console.log(`✅ sqlite-vec 向量索引表已重新创建，维度: ${dimensions}`);
+      logger.info('【Database】', `✅ sqlite-vec 向量索引表已重新创建，维度: ${dimensions}`);
       return true;
     } catch (error) {
-      console.error('重新初始化向量索引失败:', error);
+      logger.error('【Database】', '重新初始化向量索引失败:', error);
       return false;
     }
   },
@@ -1144,11 +1130,11 @@ export const vecSearchOperations = {
       db.prepare(`
         INSERT OR REPLACE INTO vec_nodes (node_id, graph_id, embedding)
         VALUES (?, ?, ?)
-      `).run(nodeId, graphId, embeddingArray.buffer);
+      `).run(nodeId, graphId, embeddingArray);
 
       return true;
     } catch (error) {
-      console.error('添加向量到索引失败:', error);
+      logger.error('【Database】', '添加向量到索引失败:', error);
       return false;
     }
   },
@@ -1169,14 +1155,14 @@ export const vecSearchOperations = {
       const insertMany = db.transaction((nodes) => {
         for (const node of nodes) {
           const embeddingArray = new Float32Array(node.embedding);
-          insertStmt.run(node.nodeId, graphId, embeddingArray.buffer);
+          insertStmt.run(node.nodeId, graphId, embeddingArray);
         }
       });
       
       insertMany(items);
       return true;
     } catch (error) {
-      console.error('批量添加向量到索引失败:', error);
+      logger.error('【Database】', '批量添加向量到索引失败:', error);
       return false;
     }
   },
@@ -1187,7 +1173,7 @@ export const vecSearchOperations = {
       db.prepare('DELETE FROM vec_nodes WHERE node_id = ?').run(nodeId);
       return true;
     } catch (error) {
-      console.error('从向量索引删除失败:', error);
+      logger.error('【Database】', '从向量索引删除失败:', error);
       return false;
     }
   },
@@ -1198,7 +1184,7 @@ export const vecSearchOperations = {
       db.prepare('DELETE FROM vec_nodes WHERE graph_id = ?').run(graphId);
       return true;
     } catch (error) {
-      console.error('清空向量索引失败:', error);
+      logger.error('【Database】', '清空向量索引失败:', error);
       return false;
     }
   },
@@ -1231,7 +1217,7 @@ export const vecSearchOperations = {
         similarity: 1 - r.distance // 转换为相似度（距离越小相似度越高）
       }));
     } catch (error) {
-      console.error('向量搜索失败:', error);
+      logger.error('【Database】', '向量搜索失败:', error);
       return [];
     }
   },
@@ -1244,7 +1230,7 @@ export const vecSearchOperations = {
       `).get(graphId);
       return result.count;
     } catch (error) {
-      console.error('获取索引数量失败:', error);
+      logger.error('【Database】', '获取索引数量失败:', error);
       return 0;
     }
   }
@@ -1490,7 +1476,7 @@ export const agentOperations = {
             db.prepare('UPDATE agents SET api_key = ?, updated_at = datetime(\'now\') WHERE id = ?')
               .run(encryptAPIKey(apiKey), cand.id);
           } catch (e) {
-            console.error('[agentOperations] 惰性加密迁移失败:', e.message);
+            logger.error('【Database】', '[agentOperations] 惰性加密迁移失败:', e.message);
           }
         }
       }

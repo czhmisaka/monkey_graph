@@ -4,6 +4,7 @@ import { agentOperations, graphOperations, graphAgentPermissionOperations } from
 import { agentAuthMiddleware, requirePermission } from '../agentAuth.js';
 import { formatListResponse, formatItemResponse, formatError } from '../utils/responseFormatter.js';
 import { getBatchLimits, updateBatchLimits, resetBatchLimits } from '../config/batchConfig.js';
+import { logger } from '../logger.js';
 
 const router = express.Router();
 
@@ -106,7 +107,7 @@ router.post('/graphs', agentAuthMiddleware, requirePermission('graphs', 'write')
         permission: 'write',
         created_by: req.agent.id
       });
-      console.log(`[Agent] 自动授权 Agent ${req.agent.id} 访问图谱 ${graph.id} (读写权限)`);
+      logger.info('【AgentAdmin】', `[Agent] 自动授权 Agent ${req.agent.id} 访问图谱 ${graph.id} (读写权限)`);
     }
 
     res.status(201).json({ graph: formatItemResponse(graph, req.query, 'graph') });

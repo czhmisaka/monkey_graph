@@ -1,5 +1,6 @@
 import { getOpenAIClient } from '../llmService.js';
 import { v4 as uuidv4 } from 'uuid';
+import { logger } from '../logger.js';
 
 // 获取环境变量中的模型配置
 const MODEL_NAME = process.env.LLM_CLOUD_MODEL_NAME || 'gpt-4o';
@@ -78,7 +79,7 @@ ${combinedText}
       const content = response.choices[0]?.message?.content || '';
       
       // 调试：打印 LLM 返回的原始内容（截取前 500 字符）
-      console.log('[本体生成] LLM 返回内容预览:', content.slice(0, 500));
+      logger.info('【Ontology】', '[本体生成] LLM 返回内容预览:', content.slice(0, 500));
       
       // 提取 JSON - 尝试多种方式
       let ontology = null;
@@ -91,7 +92,7 @@ ${combinedText}
           ontology = JSON.parse(jsonMatch[0]);
         } catch (e) {
           parseError = e;
-          console.log('[本体生成] 方法1解析失败，尝试方法2...');
+          logger.info('【Ontology】', '[本体生成] 方法1解析失败，尝试方法2...');
         }
       }
       
@@ -101,10 +102,10 @@ ${combinedText}
         if (codeBlockMatch) {
           try {
             ontology = JSON.parse(codeBlockMatch[1]);
-            console.log('[本体生成] 方法2成功 - 从代码块提取');
+            logger.info('【Ontology】', '[本体生成] 方法2成功 - 从代码块提取');
           } catch (e) {
             parseError = e;
-            console.log('[本体生成] 方法2解析失败，尝试方法3...');
+            logger.info('【Ontology】', '[本体生成] 方法2解析失败，尝试方法3...');
           }
         }
       }
@@ -127,7 +128,7 @@ ${combinedText}
         
         ontology = tryParseBrackets(content);
         if (ontology) {
-          console.log('[本体生成] 方法3成功 - 从括号匹配提取');
+          logger.info('【Ontology】', '[本体生成] 方法3成功 - 从括号匹配提取');
         }
       }
       
@@ -143,7 +144,7 @@ ${combinedText}
               edge_types: [],
               analysis_summary: '从数组格式转换'
             };
-            console.log('[本体生成] 方法4成功 - 从数组提取');
+            logger.info('【Ontology】', '[本体生成] 方法4成功 - 从数组提取');
           } catch (e) {
             parseError = e;
           }
@@ -151,17 +152,17 @@ ${combinedText}
       }
       
       if (!ontology) {
-        console.error('[本体生成] 所有解析方法都失败');
-        console.error('[本体生成] 原始内容:', content);
+        logger.error('【Ontology】', '[本体生成] 所有解析方法都失败');
+        logger.error('【Ontology】', '[本体生成] 原始内容:', content);
         throw new Error(`无法解析 LLM 返回的 JSON: ${parseError?.message || '未知错误'}`);
       }
       
-      console.log('[本体生成] JSON 解析成功!');
+      logger.info('【Ontology】', '[本体生成] JSON 解析成功!');
       
       // 验证和规范化
       return this.validateAndNormalize(ontology);
     } catch (error) {
-      console.error('本体生成失败:', error);
+      logger.error('【Ontology】', '本体生成失败:', error);
       throw new Error(`本体生成失败: ${error.message}`);
     }
   }
@@ -280,7 +281,7 @@ ${newText.slice(0, 5000)}
       // 合并扩展
       return this.mergeExtension(currentOntology, extension);
     } catch (error) {
-      console.error('本体扩展失败:', error);
+      logger.error('【Ontology】', '本体扩展失败:', error);
       return currentOntology;
     }
   }

@@ -1,6 +1,7 @@
 import express from 'express';
 import { graphOperations, nodeOperations, edgeOperations } from '../../database.js';
 import { authMiddleware } from '../../auth.js';
+import { logger } from '../../logger.js';
 
 const router = express.Router();
 
@@ -11,9 +12,9 @@ router.get('/graphs/:graphId/graph/stream', authMiddleware, async (req, res) => 
   const startTime = Date.now();
   const { graphId } = req.params;
 
-  console.log(`\n🌐 [SSE Stream] 开始流式加载图谱`);
-  console.log(`   📋 图谱ID: ${graphId}`);
-  console.log(`   👤 用户: ${req.user.username}`);
+  logger.info('【GraphData】', `\n🌐 [SSE Stream] 开始流式加载图谱`);
+  logger.info('【GraphData】', `   📋 图谱ID: ${graphId}`);
+  logger.info('【GraphData】', `   👤 用户: ${req.user.username}`);
   console.time(`[SSE Stream] 图谱 ${graphId} 加载耗时`);
 
   try {
@@ -25,7 +26,7 @@ router.get('/graphs/:graphId/graph/stream', authMiddleware, async (req, res) => 
 
     // 如果不是管理员且图谱不属于当前用户，返回 404
     if (!graph && !isAdmin) {
-      console.error(`❌ [SSE Stream] 图谱 ${graphId} 不存在或无权限访问`);
+      logger.error('【GraphData】', `❌ [SSE Stream] 图谱 ${graphId} 不存在或无权限访问`);
       return res.status(404).json({ error: '图谱不存在' });
     }
 
@@ -33,12 +34,12 @@ router.get('/graphs/:graphId/graph/stream', authMiddleware, async (req, res) => 
     if (!graph && isAdmin) {
       graph = graphOperations.getById(graphId);
       if (!graph) {
-        console.error(`❌ [SSE Stream] 图谱 ${graphId} 不存在`);
+        logger.error('【GraphData】', `❌ [SSE Stream] 图谱 ${graphId} 不存在`);
         return res.status(404).json({ error: '图谱不存在' });
       }
     }
 
-    console.log(`✅ [SSE Stream] 权限验证通过: ${graph.name}`);
+    logger.info('【GraphData】', `✅ [SSE Stream] 权限验证通过: ${graph.name}`);
 
     // 设置 SSE 响应头
     res.setHeader('Content-Type', 'text/event-stream');
@@ -51,7 +52,7 @@ router.get('/graphs/:graphId/graph/stream', authMiddleware, async (req, res) => 
     };
 
     // 获取节点和边总数（排除 embedding 字段以减少响应大小）
-    console.log(`📊 [SSE Stream] 正在查询数据库...`);
+    logger.info('【GraphData】', `📊 [SSE Stream] 正在查询数据库...`);
     const allRawNodes = nodeOperations.getByGraphId(graphId);
     const nodes = allRawNodes.map(n => {
       const { embedding, ...nodeWithoutEmbedding } = n;
@@ -62,12 +63,12 @@ router.get('/graphs/:graphId/graph/stream', authMiddleware, async (req, res) => 
     const totalNodes = nodes.length;
     const totalEdges = edges.length;
 
-    console.log(`📈 [SSE Stream] 图谱统计:`);
-    console.log(`   ├─ 总节点数: ${totalNodes}`);
-    console.log(`   └─ 总边数: ${totalEdges}`);
+    logger.info('【GraphData】', `📈 [SSE Stream] 图谱统计:`);
+    logger.info('【GraphData】', `   ├─ 总节点数: ${totalNodes}`);
+    logger.info('【GraphData】', `   └─ 总边数: ${totalEdges}`);
 
     // 发送元数据
-    console.log(`📤 [SSE Stream] 发送元数据...`);
+    logger.info('【GraphData】', `📤 [SSE Stream] 发送元数据...`);
     sendEvent({
       type: 'meta',
       totalNodes,
@@ -86,7 +87,7 @@ router.get('/graphs/:graphId/graph/stream', authMiddleware, async (req, res) => 
     const NODE_DELAY = totalNodes < 1000 ? 100 : (totalNodes < 5000 ? 50 : 30);
     const nodeBatches = Math.ceil(nodes.length / NODE_BATCH_SIZE);
 
-    console.log(`📦 [SSE Stream] 开始分批发送节点 (${nodeBatches} 批, 每批 ${NODE_BATCH_SIZE}, 延迟 ${NODE_DELAY}ms)`);
+    logger.info('【GraphData】', `📦 [SSE Stream] 开始分批发送节点 (${nodeBatches} 批, 每批 ${NODE_BATCH_SIZE}, 延迟 ${NODE_DELAY}ms)`);
 
     for (let i = 0; i < nodes.length; i += NODE_BATCH_SIZE) {
       const batch = nodes.slice(i, i + NODE_BATCH_SIZE).map(n => ({
@@ -98,7 +99,7 @@ router.get('/graphs/:graphId/graph/stream', authMiddleware, async (req, res) => 
       const loaded = Math.min(i + NODE_BATCH_SIZE, nodes.length);
       const progress = ((loaded / totalNodes) * 100).toFixed(1);
 
-      console.log(`   📦 [批次 ${batchIndex + 1}/${nodeBatches}] ${progress}% (${loaded}/${totalNodes}) +${batch.length} 个节点`);
+      logger.info('【GraphData】', `   📦 [批次 ${batchIndex + 1}/${nodeBatches}] ${progress}% (${loaded}/${totalNodes}) +${batch.length} 个节点`);
 
       sendEvent({
         type: 'nodes_batch',
@@ -115,7 +116,7 @@ router.get('/graphs/:graphId/graph/stream', authMiddleware, async (req, res) => 
       }
     }
 
-    console.log(`✅ [SSE Stream] 节点发送完成: ${totalNodes} 个`);
+    logger.info('【GraphData】', `✅ [SSE Stream] 节点发送完成: ${totalNodes} 个`);
 
     // 分批发送边（每批 100 个）
     const EDGE_BATCH_SIZE = 100;
@@ -126,7 +127,7 @@ router.get('/graphs/:graphId/graph/stream', authMiddleware, async (req, res) => 
     const EDGE_DELAY = totalEdges < 1000 ? 100 : (totalEdges < 5000 ? 50 : 30);
     const edgeBatches = Math.ceil(edges.length / EDGE_BATCH_SIZE);
 
-    console.log(`🔗 [SSE Stream] 开始分批发送边 (${edgeBatches} 批, 每批 ${EDGE_BATCH_SIZE}, 延迟 ${EDGE_DELAY}ms)`);
+    logger.info('【GraphData】', `🔗 [SSE Stream] 开始分批发送边 (${edgeBatches} 批, 每批 ${EDGE_BATCH_SIZE}, 延迟 ${EDGE_DELAY}ms)`);
 
     for (let i = 0; i < edges.length; i += EDGE_BATCH_SIZE) {
       const batch = edges.slice(i, i + EDGE_BATCH_SIZE).map(e => ({
@@ -138,7 +139,7 @@ router.get('/graphs/:graphId/graph/stream', authMiddleware, async (req, res) => 
       const loaded = Math.min(i + EDGE_BATCH_SIZE, edges.length);
       const progress = ((loaded / totalEdges) * 100).toFixed(1);
 
-      console.log(`   🔗 [批次 ${batchIndex + 1}/${edgeBatches}] ${progress}% (${loaded}/${totalEdges}) +${batch.length} 条边`);
+      logger.info('【GraphData】', `   🔗 [批次 ${batchIndex + 1}/${edgeBatches}] ${progress}% (${loaded}/${totalEdges}) +${batch.length} 条边`);
 
       sendEvent({
         type: 'edges_batch',
@@ -155,23 +156,23 @@ router.get('/graphs/:graphId/graph/stream', authMiddleware, async (req, res) => 
       }
     }
 
-    console.log(`✅ [SSE Stream] 边发送完成: ${totalEdges} 条`);
+    logger.info('【GraphData】', `✅ [SSE Stream] 边发送完成: ${totalEdges} 条`);
 
     // 发送完成事件
-    console.log(`🎉 [SSE Stream] 发送完成信号`);
+    logger.info('【GraphData】', `🎉 [SSE Stream] 发送完成信号`);
     sendEvent({ type: 'complete' });
 
     const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
-    console.log(`✅ [SSE Stream] 流式加载完成!`);
-    console.log(`   ├─ 总耗时: ${totalTime}s`);
-    console.log(`   ├─ 节点批次: ${nodeBatches}`);
-    console.log(`   └─ 边批次: ${edgeBatches}`);
+    logger.info('【GraphData】', `✅ [SSE Stream] 流式加载完成!`);
+    logger.info('【GraphData】', `   ├─ 总耗时: ${totalTime}s`);
+    logger.info('【GraphData】', `   ├─ 节点批次: ${nodeBatches}`);
+    logger.info('【GraphData】', `   └─ 边批次: ${edgeBatches}`);
     console.timeEnd(`[SSE Stream] 图谱 ${graphId} 加载耗时`);
-    console.log('');
+    logger.info('【GraphData】', '');
 
     res.end();
   } catch (error) {
-    console.error(`❌ [SSE Stream] 流式加载失败:`, error.message);
+    logger.error('【GraphData】', `❌ [SSE Stream] 流式加载失败:`, error.message);
     console.timeEnd(`[SSE Stream] 图谱 ${graphId} 加载耗时`);
     res.write(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`);
     res.end();

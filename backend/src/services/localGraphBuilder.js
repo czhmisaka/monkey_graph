@@ -2,6 +2,7 @@ import { getOpenAIClient } from '../llmService.js';
 import { v4 as uuidv4 } from 'uuid';
 import { TextProcessor } from './textProcessor.js';
 import { nodeOperations, edgeOperations, graphOperations } from '../database.js';
+import { logger } from '../logger.js';
 
 // 获取环境变量中的模型配置
 const MODEL_NAME = process.env.LLM_CLOUD_MODEL_NAME || 'gpt-4o';
@@ -49,7 +50,7 @@ export class LocalGraphBuilder {
       reportProgress('正在分块文本...', 0.1);
       const chunks = TextProcessor.smartSplit(processedText, chunkSize, chunkOverlap);
       const totalChunks = chunks.length;
-      console.log(`[图谱构建] 文本分块完成，共 ${totalChunks} 个块`);
+      logger.info('【GraphBuilder】', `[图谱构建] 文本分块完成，共 ${totalChunks} 个块`);
       
       // 3. 获取实体类型和关系类型列表
       const entityTypes = ontology.entity_types || [];
@@ -103,7 +104,7 @@ export class LocalGraphBuilder {
       const uniqueEntities = this._deduplicateEntities(allEntities);
       const uniqueRelations = this._deduplicateRelations(allRelations, uniqueEntities);
       
-      console.log(`[图谱构建] 去重后: ${uniqueEntities.length} 个实体, ${uniqueRelations.length} 条关系`);
+      logger.info('【GraphBuilder】', `[图谱构建] 去重后: ${uniqueEntities.length} 个实体, ${uniqueRelations.length} 条关系`);
       
       // 6. 创建节点
       reportProgress('正在创建节点...', 0.8);
@@ -159,7 +160,7 @@ export class LocalGraphBuilder {
         entityTypes: entityTypes.map(et => et.name)
       };
     } catch (error) {
-      console.error('[图谱构建] 构建失败:', error);
+      logger.error('【GraphBuilder】', '[图谱构建] 构建失败:', error);
       reportProgress(`构建失败: ${error.message}`, 0);
       throw error;
     }
@@ -226,7 +227,7 @@ ${chunk}
         const jsonMatch = content.match(/\{[\s\S]*\}/);
         
         if (!jsonMatch) {
-          console.warn(`[图谱构建] 无法从响应中提取 JSON，重试 ${attempt + 1}/${maxRetries}`);
+          logger.warn('【GraphBuilder】', `[图谱构建] 无法从响应中提取 JSON，重试 ${attempt + 1}/${maxRetries}`);
           continue;
         }
 
@@ -237,7 +238,7 @@ ${chunk}
           relations: Array.isArray(result.relations) ? result.relations : []
         };
       } catch (error) {
-        console.warn(`[图谱构建] 提取失败，重试 ${attempt + 1}/${maxRetries}:`, error.message);
+        logger.warn('【GraphBuilder】', `[图谱构建] 提取失败，重试 ${attempt + 1}/${maxRetries}:`, error.message);
         
         if (attempt === maxRetries - 1) {
           // 最后一次尝试失败，使用降级处理

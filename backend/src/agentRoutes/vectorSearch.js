@@ -11,6 +11,7 @@ import {
   nodeToEmbeddingText,
   isEmbeddingServiceAvailable
 } from '../services/embeddingService.js';
+import { logger } from '../logger.js';
 
 const router = express.Router();
 
@@ -252,7 +253,7 @@ router.delete('/graphs/:graphId/embedding', agentAuthMiddleware, requirePermissi
     try {
       vecSearchOperations.clearIndexByGraphId(graphId);
     } catch (e) {
-      console.log(`[Agent] 清理图谱 ${graphId} 的向量索引失败:`, e.message);
+      logger.info('【AgentVector】', `[Agent] 清理图谱 ${graphId} 的向量索引失败:`, e.message);
     }
 
     res.json({
