@@ -372,15 +372,8 @@ const showLogPanel = ref(false)
 
 // Search
 const showSearchModal = ref(false)
-const searchKeyword = ref('')
-const searchResults = ref([])
-const searchLoading = ref(false)
-const useSemanticSearch = ref(true)
+// embeddingStatus 由 Home 持有，共享给 useClustering 与 useSearch（单一实例）
 const embeddingStatus = ref({ available: false, hasEmbeddings: false })
-const searchError = ref('')
-const computingEmbedding = ref(false)
-const embeddingComputeMessage = ref('')
-const embeddingComputeSuccess = ref(false)
 
 // Clustering
 const {
@@ -502,9 +495,18 @@ const saveGraphSettings = async () => {
 
 // Search functions
 const {
+  searchKeyword,
+  searchResults,
+  searchLoading,
+  useSemanticSearch,
+  searchError,
+  computingEmbedding,
+  embeddingComputeMessage,
+  embeddingComputeSuccess,
   checkEmbeddingStatus,
   computeEmbeddings,
   executeSearch,
+  handleSearchModeChange,
   viewSearchedNode: viewSearchedNodeFn
 } = useSearch(currentGraphId, embeddingStatus, () => graphSettings.value?.nodeTypes ? graphSettings.value.nodeTypes : {})
 
@@ -521,14 +523,6 @@ const openSearchModal = async () => {
 const viewSearchedNode = (node) => {
   viewSearchedNodeFn(node)
   viewNodeDetail(node.id)
-}
-
-const handleSearchModeChange = () => {
-  searchResults.value = []
-  searchError.value = ''
-  if (useSemanticSearch.value && !embeddingStatus.value.hasEmbeddings) {
-    searchError.value = '当前图谱尚未计算向量，请先在对话中让 AI 分析文档或手动触发向量计算'
-  }
 }
 
 // Auth modal

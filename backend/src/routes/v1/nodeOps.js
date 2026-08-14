@@ -198,8 +198,8 @@ router.get('/graphs/:graphId/nodes/search/:keyword', authMiddleware, (req, res) 
   try {
     const { graphId } = req.params;
 
-    // 写操作：属主校验（与现状一致：搜索沿用属主校验）
-    const access = graphService.assertGraphWritable(graphId, { kind: 'user', user: req.user });
+    // 搜索是读操作：沿用列表读权限（属主 / agent- 前缀放行 / 管理员放行）
+    const access = graphService.assertGraphReadable(graphId, { kind: 'user', user: req.user });
     if (access.error) {
       return res.status(access.error.status).json({ error: access.error.message });
     }

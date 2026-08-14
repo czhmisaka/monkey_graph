@@ -82,7 +82,7 @@ const loadAllGraphsAuth = async () => {
     console.log('图谱数据:', graphsData)
     
     // 获取用户创建的所有 Agent
-    const agentsRes = await fetch('/api/user/agents/my', { headers })
+    const agentsRes = await fetch('/api/user/agents/my', { credentials: 'include' })
     if (!agentsRes.ok) {
       console.error('获取 Agent 失败:', agentsRes.status)
     } else {
@@ -193,11 +193,11 @@ const updateAgentPermission = async (graphId, agentId, permission) => {
 const loadGraphAuthStats = async () => {
   try {
     // 获取用户的所有图谱
-    const graphsRes = await fetch('/api/graphs', { headers })
+    const graphsRes = await fetch('/api/graphs', { credentials: 'include' })
     const graphs = graphsRes.ok ? await graphsRes.json() : []
     
     // 获取用户创建的所有 Agent
-    const agentsRes = await fetch('/api/user/agents/my', { headers })
+    const agentsRes = await fetch('/api/user/agents/my', { credentials: 'include' })
     const agents = agentsRes.ok ? await agentsRes.json() : []
     
     // 统计已授权的 Agent 总数 - 实际需要获取每个图谱的授权
@@ -205,7 +205,7 @@ const loadGraphAuthStats = async () => {
     if (Array.isArray(graphs)) {
       for (const graph of graphs) {
         try {
-          const authRes = await fetch(`/api/graphs/${graph.id}/agents`, { headers })
+          const authRes = await fetch(`/api/graphs/${graph.id}/agents`, { credentials: 'include' })
           if (authRes.ok) {
             const auths = await authRes.json()
             totalAuth += Array.isArray(auths) ? auths.length : 0

@@ -103,7 +103,12 @@ export function useSearch(currentGraphId, embeddingStatus, getNodeColor) {
   }
 
   // Execute search
-  const executeSearch = async () => {
+  // 支持可选 keyword 参数：Home 层传入外部搜索框的关键词；
+  // 不传时回退到内部 searchKeyword（兼容既有调用）
+  const executeSearch = async (externalKeyword) => {
+    if (externalKeyword !== undefined && externalKeyword !== null) {
+      searchKeyword.value = String(externalKeyword)
+    }
     if (!searchKeyword.value.trim() || !currentGraphId?.value || searchLoading.value) return
 
     // Cancel previous request if any
