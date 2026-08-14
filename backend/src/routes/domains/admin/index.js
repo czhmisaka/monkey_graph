@@ -25,6 +25,22 @@ function requireAdmin(req, res) {
   return true;
 }
 
+// 确保所有存量用户都有对应租户（懒创建兜底）
+function ensureTenants() {
+  try {
+    const users = db.prepare('SELECT id, username FROM users').all();
+    const insert = db.prepare(`
+      INSERT OR IGNORE INTO tenants (id, name, slug)
+      VALUES (?, ?, ?)
+    `);
+    for (const u of users) {
+      insert.run(u.id, `${u.username} 的租户`, u.username);
+    }
+  } catch (e) {
+    // 表不存在或创建失败时静默（租户功能降级）
+  }
+}
+
 /**
  * 获取所有租户列表
  * GET /api/admin/tenants
@@ -32,17 +48,21 @@ function requireAdmin(req, res) {
 router.get('/admin/tenants', authMiddleware, (req, res) => {
   if (!requireAdmin(req, res)) return;
 
+  // 懒创建兜底：确保存量用户都有租户
+  ensureTenants();
+
   try {
     let tenants = [];
     try {
       tenants = db.prepare(`
         SELECT t.*,
                (SELECT COUNT(*) FROM graphs WHERE user_id = t.id) as graph_count,
-               (SELECT COUNT(*) FROM users WHERE tenant_id = t.id) as user_count
+               (SELECT COUNT(*) FROM users WHERE users.id = t.id) as user_count
         FROM tenants t
         ORDER BY t.created_at DESC
       `).all();
     } catch (e) {
+      logger.warn('【Admin】', '获取租户列表失败(降级为空):', e.message);
       tenants = [];
     }
 

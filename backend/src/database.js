@@ -375,6 +375,19 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_agent_api_logs_agent_id ON agent_api_logs(agent_id);
   CREATE INDEX IF NOT EXISTS idx_agent_api_logs_created_at ON agent_api_logs(created_at);
+
+  -- 租户表（每个用户自动对应一个租户，user.id = tenant.id）
+  CREATE TABLE IF NOT EXISTS tenants (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    slug TEXT,
+    status TEXT DEFAULT 'active',
+    plan TEXT DEFAULT 'free',
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_tenants_slug ON tenants(slug);
 `);
 
 export default db;
@@ -413,7 +426,7 @@ const getDefaultSettings = () => {
 
 // 用户操作
 export const userOperations = {
-  // 创建用户
+  // 创建用户（同步创建对应租户，user.id = tenant.id）
   async create(user) {
     const id = crypto.randomUUID();
     const rounds = parseInt(process.env.BCRYPT_ROUNDS) || 12;
@@ -423,6 +436,17 @@ export const userOperations = {
       VALUES (?, ?, ?)
     `);
     stmt.run(id, user.username, hashedPassword);
+
+    // 创建对应租户（每个用户默认一个 free 租户）
+    try {
+      db.prepare(`
+        INSERT OR IGNORE INTO tenants (id, name, slug)
+        VALUES (?, ?, ?)
+      `).run(id, `${user.username} 的租户`, user.username);
+    } catch (e) {
+      // 租户创建失败不阻塞用户注册（租户懒创建兜底）
+    }
+
     return { id, username: user.username };
   },
 
